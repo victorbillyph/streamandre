@@ -245,7 +245,16 @@ try {
     Push-Location "$INSTALL_DIR\client"
     node capture-helper.js
     Pop-Location
+} catch {
+    Write-Host "ERRO: $_" -ForegroundColor Red
+    Write-Host "Pressione qualquer tecla para fechar..." -ForegroundColor Yellow
+    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+    exit 1
 } finally {
     if ($bridgeProc) { Stop-Process -Id $bridgeProc.Id -Force -ErrorAction SilentlyContinue }
-    Write-Host "Parado!" -ForegroundColor Green
+    Write-Host "Parado! Pressione qualquer tecla..." -ForegroundColor Green
+    # so pausa se foi erro ou se viewer fechou com erro
+    if ($Error.Count -gt 0 -or $LASTEXITCODE -ne 0) {
+        $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+    }
 }

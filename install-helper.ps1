@@ -159,3 +159,9 @@ Write-Host "Ou manualmente:" -ForegroundColor Yellow
 Write-Host "  cd $INSTALL_DIR\client"
 Write-Host "  node bridge.mjs <onion> <porta>"
 Write-Host "  node capture-helper.js"
+# pausa se houve erro durante instalacao
+if ($Error.Count -gt 0) {
+    Write-Host ""
+    Write-Host "Pressione qualquer tecla para fechar..." -ForegroundColor Yellow
+    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+}

@@ -123,23 +123,32 @@ function cleanup() {
     if (ws) { try { ws.close(); } catch {} ws = null; }
     removeOverlay(); removePickerModal();
 }
-function connectWS(onionAddr: string, onionPort: number, mode: string, room?: string | null): Promise<string> {
+function tryConnect(url: string, mode: string, room?: string | null): Promise<string> {
     return new Promise((resolve, reject) => {
-        ws = new WebSocket(`ws://127.0.0.1:6789`);
-        const timeout = setTimeout(() => { ws!.close(); reject(new Error("Helper nao conectado (ws://127.0.0.1:6789). Rode streamrelay-start)")); }, 4000);
-        ws.onopen = () => { clearTimeout(timeout); ws!.send(JSON.stringify({ type: mode, room: room || undefined })); };
-        ws.onmessage = (event: any) => {
+        const s = new WebSocket(url);
+        ws = s;
+        const timeout = setTimeout(() => { try { s.close(); } catch {} reject(new Error("timeout")); }, 4000);
+        s.onopen = () => { clearTimeout(timeout); s.send(JSON.stringify({ type: mode, room: room || undefined })); };
+        s.onmessage = (event: any) => {
             if (typeof event.data === "string") {
                 const msg = JSON.parse(event.data);
                 if (msg.type === "room") resolve(msg.id);
-                else if (msg.type === "error") reject(new Error(msg.msg));
+                else if (msg.type === "error") { clearTimeout(timeout); reject(new Error(msg.msg)); }
                 else if (msg.type === "gone") { showToast("Host desconectado", Toasts.Type.FAILURE); cleanup(); }
                 else if (msg.type === "viewing") showToast(`Conectado na sala ${msg.room}`, Toasts.Type.SUCCESS);
             } else handleFrame(event.data);
         };
-        ws.onerror = () => { clearTimeout(timeout); reject(new Error("Falha ao conectar no helper (127.0.0.1:6789)")); };
-        ws.onclose = () => clearTimeout(timeout);
+        s.onerror = () => { clearTimeout(timeout); reject(new Error("ws error")); };
+        s.onclose = () => clearTimeout(timeout);
     });
+}
+function connectWS(_onionAddr: string, _onionPort: number, mode: string, room?: string | null): Promise<string> {
+    // viewer/host: tenta direto no relay local (sem Tor) primeiro; fallback via bridge Tor
+    return tryConnect(`ws://127.0.0.1:8080`, mode, room).catch(() =>
+        tryConnect(`ws://127.0.0.1:6789`, mode, room).catch(() => {
+            throw new Error("Helper nao conectado (127.0.0.1:8080/6789). Rode streamrelay-start");
+        })
+    );
 }
 function handleFrame(data: ArrayBuffer) {
     if (!overlayEl) return;
@@ -150,13 +159,14 @@ function handleFrame(data: ArrayBuffer) {
     createImageBitmap(blob).then(bmp => { canvas.width = bmp.width; canvas.height = bmp.height; ctx.drawImage(bmp, 0, 0); }).catch(() => {});
 }
 function checkHelperStatus(): Promise<boolean> {
-    return new Promise(res => {
-        const s = new WebSocket("ws://127.0.0.1:6789");
+    const tryUrl = (url: string) => new Promise<boolean>(res => {
+        const s = new WebSocket(url);
         let done = false;
-        const t = setTimeout(() => { if (!done) { done = true; try { s.close(); } catch {} res(false); } }, 1500);
+        const t = setTimeout(() => { if (!done) { done = true; try { s.close(); } catch {} res(false); } }, 1200);
         s.onopen = () => { if (!done) { done = true; clearTimeout(t); s.close(); res(true); } };
         s.onerror = () => { if (!done) { done = true; clearTimeout(t); res(false); } };
     });
+    return tryUrl("ws://127.0.0.1:8080").then(ok => ok ? true : tryUrl("ws://127.0.0.1:6789"));
 }
 function startStreaming(mediaStream: MediaStream) {
     stream = mediaStream;
@@ -206,39 +216,18 @@ function startView(room: string) {
 function StatusModal({ modalProps, close }: { modalProps: any; close: () => void; }) {
     const [helperOk, setHelperOk] = useState<boolean | null>(null);
     const [room, setRoom] = useState("");
-    const [isStreaming] = useState(!!stream);
 
     useEffect(() => { checkHelperStatus().then(setHelperOk); }, []);
 
-    const doScreen = async (surface: "monitor" | "window") => {
-        close();
-        const gdm = originalGetDisplayMedia || navigator.mediaDevices?.getDisplayMedia?.bind(navigator.mediaDevices);
-        if (!gdm) {
-            showToast("Captura via Discord bloqueada no Flatpak. Use o helper: streamrelay-start", Toasts.Type.FAILURE);
-            return;
-        }
-        try {
-            const s = await gdm({ video: { displaySurface: surface } as any, audio: false });
-            startStreaming(s);
-        } catch (e: any) {
-            const msg = e.message || "";
-            if (msg.includes("Not Supported") || msg.includes("not supported") || msg.includes("Permission denied")) {
-                showToast("Flatpak bloqueou captura. Use o helper externo: streamrelay-start (captura via grim/PipeWire)", Toasts.Type.FAILURE);
-            } else {
-                showToast(`Erro captura: ${msg}`, Toasts.Type.FAILURE);
-            }
-        }
-    };
-
     return (
-        <Modal {...modalProps} size="md" title="StreamRelay">
+        <Modal {...modalProps} size="md" title="StreamRelay — Assistir">
             <div style={{ display: "flex", flexDirection: "column", gap: 16, padding: "8px 0" }}>
                 <Flex direction="column" style={{ gap: 8 }}>
                     <Text variant="heading-sm/semibold">Status</Text>
                     <div style={{ background: "var(--background-secondary)", borderRadius: 8, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
                         <Flex alignItems="center" style={{ gap: 8 }}>
                             <span style={{ width: 10, height: 10, borderRadius: "50%", background: helperOk === null ? "#80848e" : helperOk ? "#23a559" : "#f23f43", display: "inline-block" }} />
-                            <Text variant="text-sm/medium">Helper: {helperOk === null ? "verificando..." : helperOk ? "conectado (127.0.0.1:6789)" : "desconectado"}</Text>
+                            <Text variant="text-sm/medium">Helper: {helperOk === null ? "verificando..." : helperOk ? "conectado (127.0.0.1:6789 / 8080)" : "desconectado"}</Text>
                         </Flex>
                         {!helperOk && helperOk !== null && (
                             <Text variant="text-xs/normal" style={{ color: "var(--text-muted)" }}>
@@ -248,29 +237,21 @@ function StatusModal({ modalProps, close }: { modalProps: any; close: () => void
                         <Text variant="text-xs/normal" style={{ color: "var(--text-muted)", fontFamily: "monospace", wordBreak: "break-all" }}>
                             Onion: {settings.store.onionAddress}:{settings.store.onionPort}
                         </Text>
-                        {isStreaming && <Text variant="text-sm/bold" style={{ color: "#f23f43" }}>● Transmitindo</Text>}
+                        <Text variant="text-xs/normal" style={{ color: "var(--text-muted)" }}>
+                            Transmissão via helper externo (grim). Plugin só assiste.
+                        </Text>
                     </div>
                 </Flex>
 
                 <Divider />
 
                 <Flex direction="column" style={{ gap: 8 }}>
-                    <Text variant="heading-sm/semibold">Transmitir</Text>
-                    <Text variant="text-sm/normal" style={{ color: "var(--text-muted)" }}>Selecione o que deseja compartilhar. O video vai via Tor para seu servidor.</Text>
-                    <Flex style={{ gap: 8 }}>
-                        <Button disabled={helperOk === false} onClick={() => doScreen("monitor")}>Tela inteira</Button>
-                        <Button disabled={helperOk === false} color={Button.Colors.PRIMARY} look={Button.Looks.OUTLINED} onClick={() => doScreen("window")}>Janela</Button>
-                        <Button color={Button.Colors.RED} disabled={!stream} onClick={() => { cleanup(); close(); showToast("Transmissao parada", Toasts.Type.SUCCESS); }}>Parar</Button>
-                    </Flex>
-                </Flex>
-
-                <Divider />
-
-                <Flex direction="column" style={{ gap: 8 }}>
-                    <Text variant="heading-sm/semibold">Assistir</Text>
-                    <TextInput value={room} onChange={setRoom} placeholder=" room id (ex: a1b2c3)" />
+                    <Text variant="heading-sm/semibold">Assistir transmissão</Text>
+                    <Text variant="text-sm/normal" style={{ color: "var(--text-muted)" }}>Insira o código da sala criado pelo host.</Text>
+                    <TextInput value={room} onChange={setRoom} placeholder=" room id (ex: wmqjpl)" />
                     <Flex style={{ gap: 8 }}>
                         <Button disabled={!room || helperOk === false} onClick={() => { close(); startView(room); }}>Assistir sala</Button>
+                        <Button color={Button.Colors.RED} disabled={!stream && !overlayEl} onClick={() => { cleanup(); close(); showToast("Visualização parada", Toasts.Type.SUCCESS); }}>Parar</Button>
                     </Flex>
                 </Flex>
             </div>

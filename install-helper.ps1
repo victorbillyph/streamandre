@@ -59,43 +59,31 @@ if ($missing.Count -gt 0) {
             if (Get-Command $dep -ErrorAction SilentlyContinue) { $installed = $true }
         }
         if (-not $installed) {
-            # fallback manual download
+            # fallback portable (sem admin)
+            $toolsDir = "$INSTALL_DIR\tools"
+            New-Item -ItemType Directory -Force -Path $toolsDir | Out-Null
             if ($dep -eq "git") {
-                Write-Host "  Baixando Git manualmente..." -ForegroundColor Yellow
+                Write-Host "  Baixando Git portatil (sem instalar)..." -ForegroundColor Yellow
                 try {
-                    $url = "https://github.com/git-for-windows/git/releases/download/v2.45.1.windows.1/Git-2.45.1-64-bit.exe"
-                    $tmp = "$env:TEMP\Git-installer.exe"
-                    try {
-                        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-                        Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing -Headers @{"Cache-Control"="no-cache"} -MaximumRedirection 5
-                        if ((Get-Item $tmp).Length -lt 1MB) { throw "arquivo pequeno" }
-                    } catch {
-                        try { Start-BitsTransfer -Source $url -Destination $tmp -ErrorAction Stop } catch {
-                            try { curl.exe -L $url -o $tmp } catch {}
-                        }
-                    }
-                    Start-Process -FilePath $tmp -ArgumentList "/VERYSILENT /NORESTART /SP-" -Wait
-                    $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User") + ";C:\Program Files\Git\cmd;C:\Program Files\Git\bin"
-                    if (Get-Command git -ErrorAction SilentlyContinue) { $installed = $true } elseif (Test-Path "C:\Program Files\Git\cmd\git.exe") { $env:Path += ";C:\Program Files\Git\cmd"; $installed = $true }
-                } catch { Write-Host "  Falha download Git: $_" -ForegroundColor Red }
+                    $url = "https://github.com/git-for-windows/git/releases/download/v2.45.1.windows.1/MinGit-2.45.1-64-bit.zip"
+                    $tmp = "$env:TEMP\mingit.zip"
+                    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+                    try { Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing -MaximumRedirection 5 } catch { Start-BitsTransfer -Source $url -Destination $tmp -ErrorAction Stop }
+                    Expand-Archive -Path $tmp -DestinationPath "$toolsDir\git" -Force
+                    $env:Path = "$toolsDir\git\cmd;$toolsDir\git\mingw64\bin;" + $env:Path
+                    if (Test-Path "$toolsDir\git\cmd\git.exe") { $installed = $true; Write-Host "  [OK] Git portatil pronto" -ForegroundColor Green }
+                } catch { Write-Host "  Falha Git portatil: $_" -ForegroundColor Red }
             } elseif ($dep -eq "node" -or $dep -eq "npm") {
-                Write-Host "  Baixando Node.js manualmente..." -ForegroundColor Yellow
+                Write-Host "  Baixando Node.js portatil..." -ForegroundColor Yellow
                 try {
-                    $url = "https://nodejs.org/dist/v20.18.0/node-v20.18.0-x64.msi"
-                    $tmp = "$env:TEMP\node-installer.msi"
-                    try {
-                        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-                        Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing -Headers @{"Cache-Control"="no-cache"} -MaximumRedirection 5
-                        if ((Get-Item $tmp).Length -lt 1MB) { throw "arquivo pequeno" }
-                    } catch {
-                        try { Start-BitsTransfer -Source $url -Destination $tmp -ErrorAction Stop } catch {
-                            try { curl.exe -L $url -o $tmp } catch {}
-                        }
-                    }
-                    Start-Process -FilePath "msiexec.exe" -ArgumentList "/i `"$tmp`" /quiet /norestart" -Wait
-                    $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User") + ";C:\Program Files\nodejs"
-                    if (Get-Command node -ErrorAction SilentlyContinue) { $installed = $true } elseif (Test-Path "C:\Program Files\nodejs\node.exe") { $env:Path += ";C:\Program Files\nodejs"; $installed = $true }
-                } catch { Write-Host "  Falha download Node: $_" -ForegroundColor Red }
+                    $url = "https://nodejs.org/dist/v20.18.0/node-v20.18.0-win-x64.zip"
+                    $tmp = "$env:TEMP\node.zip"
+                    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+                    try { Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing -MaximumRedirection 5 } catch { Start-BitsTransfer -Source $url -Destination $tmp -ErrorAction Stop }
+                    Expand-Archive -Path $tmp -DestinationPath $toolsDir -Force
+                    $env:Path = "$toolsDir\node-v20.18.0-win-x64;" + $env:Path
+                    if (Test-Path "$toolsDir\node-v20.18.0-win-x64\node.exe") { $installed = $true; Write-Host "  [OK] Node portatil pronto" -ForegroundColor Green }
+                } catch { Write-Host "  Falha Node portatil: $_" -ForegroundColor Red }
             }
             if (-not $installed) { Write-Host "  [ERRO] Falha ao instalar $dep" -ForegroundColor Red }
         }
@@ -114,6 +102,9 @@ if ($missing.Count -gt 0) {
 
 Write-Host ""
 Write-Host "Clonando repositorio..." -ForegroundColor Cyan
+# usa git portatil se instalou
+if (Test-Path "$INSTALL_DIR\tools\git\cmd\git.exe") { $env:Path = "$INSTALL_DIR\tools\git\cmd;" + $env:Path }
+if (Test-Path "$INSTALL_DIR\tools\node-v20.18.0-win-x64\node.exe") { $env:Path = "$INSTALL_DIR\tools\node-v20.18.0-win-x64;" + $env:Path }
 if (Test-Path "$INSTALL_DIR\.git") {
     Set-Location $INSTALL_DIR
     git pull

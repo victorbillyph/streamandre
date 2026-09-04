@@ -138,6 +138,25 @@ cleanup() {
 
 trap cleanup EXIT INT TERM
 
+auto_update() {
+    if [ -d "$INSTALL_DIR/.git" ]; then
+        echo -e "${YELLOW}Verificando atualizacoes...${NC}"
+        (cd "$INSTALL_DIR" && git fetch --quiet && LOCAL=$(git rev-parse HEAD) && REMOTE=$(git rev-parse @{u} 2>/dev/null || echo $LOCAL) && if [ "$LOCAL" != "$REMOTE" ]; then echo -e "${YELLOW}Nova versao encontrada, atualizando...${NC}"; git pull --ff-only --quiet && echo -e "${GREEN}Atualizado!${NC}"; (cd "$INSTALL_DIR/client" && npm install --silent); return 0; else echo -e "${GREEN}[OK] Ja na ultima versao${NC}"; return 1; fi)
+        UPDATED=$?
+        if [ $UPDATED -eq 0 ]; then
+            # reinstala plugin se mudou
+            if [ -f "$INSTALL_DIR/plugin/StreamRelay.tsx" ] && [ -f "$HOME/Vencord/src/userplugins/StreamRelay.tsx" ]; then
+                if ! diff -q "$INSTALL_DIR/plugin/StreamRelay.tsx" "$HOME/Vencord/src/userplugins/StreamRelay.tsx" >/dev/null 2>&1; then
+                    echo -e "${YELLOW}Plugin atualizado, recompilando...${NC}"
+                    cp "$INSTALL_DIR/plugin/StreamRelay.tsx" "$HOME/Vencord/src/userplugins/StreamRelay.tsx"
+                    (cd "$HOME/Vencord" && npx pnpm build >/dev/null 2>&1 && sudo npx pnpm inject >/dev/null 2>&1) && echo -e "${GREEN}[OK] Plugin atualizado${NC}" || echo -e "${YELLOW}[AVISO] Falha ao recompilar plugin${NC}"
+                fi
+            fi
+            cp "$INSTALL_DIR/streamrelay-start.sh" "$HOME/.local/bin/streamrelay-start" 2>/dev/null; chmod +x "$HOME/.local/bin/streamrelay-start" 2>/dev/null
+        fi
+    fi
+}
+
 ensure_vencord_plugin() {
     local PLUGIN_SRC="$INSTALL_DIR/plugin/StreamRelay.tsx"
     local VENCORD_DIR="$HOME/Vencord"
@@ -163,6 +182,7 @@ ensure_vencord_plugin() {
 # Main
 echo -e "${GREEN}Onion: $ONION:$PORT${NC}"
 echo ""
+auto_update
 ensure_vencord_plugin || echo -e "${YELLOW}[AVISO] Continue sem plugin (viewer precisa instalar manualmente)${NC}"
 
 # Check/install Tor

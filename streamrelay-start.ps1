@@ -110,6 +110,35 @@ function Start-Bridge {
     return $bridgeProc
 }
 
+function Update-Helper {
+    if (Test-Path "$INSTALL_DIR\.git") {
+        Write-Host "Verificando atualizacoes..." -ForegroundColor Yellow
+        Push-Location $INSTALL_DIR
+        git fetch --quiet
+        $local = git rev-parse HEAD
+        $remote = git rev-parse '@{u}' 2>$null; if (-not $remote) { $remote = $local }
+        if ($local -ne $remote) {
+            Write-Host "Nova versao encontrada, atualizando..." -ForegroundColor Yellow
+            git pull --ff-only --quiet
+            Write-Host "Atualizado!" -ForegroundColor Green
+            Push-Location "$INSTALL_DIR\client"; npm install --silent; Pop-Location
+            if ((Test-Path "$INSTALL_DIR\plugin\StreamRelay.tsx") -and (Test-Path "$env:USERPROFILE\Vencord\src\userplugins\StreamRelay.tsx")) {
+                $a = Get-FileHash "$INSTALL_DIR\plugin\StreamRelay.tsx"
+                $b = Get-FileHash "$env:USERPROFILE\Vencord\src\userplugins\StreamRelay.tsx"
+                if ($a.Hash -ne $b.Hash) {
+                    Write-Host "Plugin atualizado, recompilando..." -ForegroundColor Yellow
+                    Copy-Item "$INSTALL_DIR\plugin\StreamRelay.tsx" "$env:USERPROFILE\Vencord\src\userplugins\StreamRelay.tsx" -Force
+                    Push-Location "$env:USERPROFILE\Vencord"; pnpm build | Out-Null; Start-Process -FilePath "pnpm" -ArgumentList "inject" -Verb RunAs -Wait; Pop-Location
+                    Write-Host "[OK] Plugin atualizado" -ForegroundColor Green
+                }
+            }
+        } else {
+            Write-Host "[OK] Ja na ultima versao" -ForegroundColor Green
+        }
+        Pop-Location
+    }
+}
+
 function Ensure-VencordPlugin {
     $VENCORD_DIR = "$env:USERPROFILE\Vencord"
     $PLUGIN_SRC = "$INSTALL_DIR\plugin\StreamRelay.tsx"
@@ -139,6 +168,7 @@ function Ensure-VencordPlugin {
 # Main
 Write-Host "Onion: ${Onion}:${Port}" -ForegroundColor Green
 Write-Host ""
+Update-Helper
 try { Ensure-VencordPlugin } catch { Write-Host "[AVISO] Falha ao instalar plugin: $_" -ForegroundColor Yellow }
 
 try {

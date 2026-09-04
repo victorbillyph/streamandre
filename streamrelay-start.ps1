@@ -144,51 +144,41 @@ function Ensure-Deps {
     foreach ($c in @("git","node","pnpm")) { if (-not (Get-Command $c -ErrorAction SilentlyContinue)) { $need += $c } }
     if ($need.Count -eq 0) { return }
     Write-Host "Dependencias faltando: $($need -join ', ') — instalando..." -ForegroundColor Yellow
-    $map = @{ git = "Git.Git"; node = "OpenJS.NodeJS.LTS"; pnpm = "pnpm.pnpm" }
     foreach ($dep in $need) {
-        $id = $map[$dep]; if (-not $id) { $id = $dep }
-        if (Get-Command winget -ErrorAction SilentlyContinue) {
-            try { winget install -e --id $id --accept-source-agreements --accept-package-agreements --silent --disable-interactivity | Out-Null } catch {}
-            $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
-        }
-        if (-not (Get-Command $dep -ErrorAction SilentlyContinue) -and (Get-Command choco -ErrorAction SilentlyContinue)) {
-            try { choco install $dep -y --no-progress | Out-Null } catch {}
-            $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
-        }
+        # direto portatil sem winget
         if (-not (Get-Command $dep -ErrorAction SilentlyContinue)) {
-            # fallback manual
+            # fallback portable (sem admin, sem winget)
+            $toolsDir = "$INSTALL_DIR\tools"
+            New-Item -ItemType Directory -Force -Path $toolsDir | Out-Null
             if ($dep -eq "git") {
-                Write-Host "Baixando Git manualmente..." -ForegroundColor Yellow
-                $url = "https://github.com/git-for-windows/git/releases/download/v2.45.1.windows.1/Git-2.45.1-64-bit.exe"
-                $tmp = "$env:TEMP\Git-installer.exe"
+                Write-Host "Baixando Git portatil..." -ForegroundColor Yellow
+                $url = "https://github.com/git-for-windows/git/releases/download/v2.45.1.windows.1/MinGit-2.45.1-64-bit.zip"
+                $tmp = "$env:TEMP\mingit.zip"
                 try {
                     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
                     Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing -MaximumRedirection 5
                     if ((Get-Item $tmp).Length -lt 1MB) { throw "pequeno" }
-                } catch {
-                    try { Start-BitsTransfer -Source $url -Destination $tmp -ErrorAction Stop } catch { curl.exe -L $url -o $tmp }
-                }
-                Start-Process -FilePath $tmp -ArgumentList "/VERYSILENT /NORESTART" -Wait
-                $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+                } catch { try { Start-BitsTransfer -Source $url -Destination $tmp -ErrorAction Stop } catch { curl.exe -L $url -o $tmp } }
+                Expand-Archive -Path $tmp -DestinationPath "$toolsDir\git" -Force
+                $env:Path = "$toolsDir\git\cmd;$toolsDir\git\mingw64\bin;" + $env:Path
             } elseif ($dep -eq "node") {
-                Write-Host "Baixando Node.js manualmente..." -ForegroundColor Yellow
-                $url = "https://nodejs.org/dist/v20.18.0/node-v20.18.0-x64.msi"
-                $tmp = "$env:TEMP\node-installer.msi"
+                Write-Host "Baixando Node.js portatil..." -ForegroundColor Yellow
+                $url = "https://nodejs.org/dist/v20.18.0/node-v20.18.0-win-x64.zip"
+                $tmp = "$env:TEMP\node.zip"
                 try {
                     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
                     Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing -MaximumRedirection 5
                     if ((Get-Item $tmp).Length -lt 1MB) { throw "pequeno" }
-                } catch {
-                    try { Start-BitsTransfer -Source $url -Destination $tmp -ErrorAction Stop } catch { curl.exe -L $url -o $tmp }
-                }
-                Start-Process -FilePath "msiexec.exe" -ArgumentList "/i `"$tmp`" /quiet /norestart" -Wait
-                $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+                } catch { try { Start-BitsTransfer -Source $url -Destination $tmp -ErrorAction Stop } catch { curl.exe -L $url -o $tmp } }
+                Expand-Archive -Path $tmp -DestinationPath $toolsDir -Force
+                $env:Path = "$toolsDir\node-v20.18.0-win-x64;" + $env:Path
+            } elseif ($dep -eq "pnpm") {
             } elseif ($dep -eq "pnpm") {
                 cmd /c "npm.cmd install -g pnpm"
                 $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
             }
             if (-not (Get-Command $dep -ErrorAction SilentlyContinue)) {
-                throw "Falha ao instalar $dep. Instale manualmente: https://github.com/$id"
+                throw "Falha ao instalar $dep. Instale manualmente."
             }
         }
     }

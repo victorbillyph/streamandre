@@ -37,27 +37,10 @@ if (-not (Check-Command "npm")) { $missing += "npm" }
 if ($missing.Count -gt 0) {
     Write-Host ""
     Write-Host "Instalando dependencias faltantes..." -ForegroundColor Yellow
-    $wingetMap = @{ git = "Git.Git"; node = "OpenJS.NodeJS.LTS"; npm = "OpenJS.NodeJS.LTS" }
-    $chocoMap = @{ git = "git"; node = "nodejs"; npm = "nodejs" }
     foreach ($dep in $missing) {
         $installed = $false
-        if (Get-Command winget -ErrorAction SilentlyContinue) {
-            $id = $wingetMap[$dep]; if (-not $id) { $id = $dep }
-            Write-Host "  winget install $id ..." -ForegroundColor Yellow
-            try {
-                winget install -e --id $id --accept-source-agreements --accept-package-agreements --silent --disable-interactivity 2>&1 | Out-Null
-                # atualiza PATH
-                $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
-            } catch {}
-            if (Get-Command $dep -ErrorAction SilentlyContinue) { $installed = $true; Write-Host "  [OK] $dep instalado via winget" -ForegroundColor Green }
-        }
-        if (-not $installed -and (Get-Command choco -ErrorAction SilentlyContinue)) {
-            $cid = $chocoMap[$dep]; if (-not $cid) { $cid = $dep }
-            Write-Host "  choco install $cid ..." -ForegroundColor Yellow
-            try { choco install $cid -y --no-progress 2>&1 | Out-Null } catch {}
-            $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
-            if (Get-Command $dep -ErrorAction SilentlyContinue) { $installed = $true }
-        }
+        # direto portatil (sem winget/choco)
+        if ($false) { } # placeholder
         if (-not $installed) {
             # fallback portable (sem admin)
             $toolsDir = "$INSTALL_DIR\tools"

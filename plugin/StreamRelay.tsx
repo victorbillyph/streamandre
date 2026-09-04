@@ -357,7 +357,10 @@ function interceptedGetDisplayMedia(options) {
             return mediaStream;
         });
     }
-    return originalGetDisplayMedia.call(navigator.mediaDevices, options);
+    if (originalGetDisplayMedia) {
+        return originalGetDisplayMedia.call(navigator.mediaDevices, options);
+    }
+    return navigator.mediaDevices.getDisplayMedia(options);
 }
 
 function startView(onionAddr, onionPort, room) {
@@ -382,9 +385,13 @@ export default definePlugin({
         startPopupObserver();
 
         if (settings.store.autoRelay) {
-            originalGetDisplayMedia = navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices);
-            navigator.mediaDevices.getDisplayMedia = interceptedGetDisplayMedia;
-            console.log("[StreamRelay] Screen share interceptado - usando servidor relay");
+            if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
+                originalGetDisplayMedia = navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices);
+                navigator.mediaDevices.getDisplayMedia = interceptedGetDisplayMedia;
+                console.log("[StreamRelay] Screen share interceptado - usando servidor relay");
+            } else {
+                console.warn("[StreamRelay] getDisplayMedia nao disponivel - funcionalidade limitada");
+            }
         }
     },
 
@@ -418,9 +425,10 @@ export default definePlugin({
                     const originalGDM = originalGetDisplayMedia || navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices);
                     const s = await originalGDM({ video: true, audio: false });
                     startStreaming(s);
-                    sendBotMessage(ctx.channel.id, `Iniciando transmissao via StreamRelay`);
+                    sendBotMessage(ctx.channel.id, { content: "Iniciando transmissao via StreamRelay" });
                 } catch (e) {
-                    sendBotMessage(ctx.channel.id, `Erro ao capturar tela: ${e.message}`);
+                    console.error("[StreamRelay] Capture error:", e);
+                    sendBotMessage(ctx.channel.id, { content: `Erro ao capturar tela: ${e.message}. Se estiver no Flatpak, rode: flatpak override --user --socket=session-bus com.discordapp.Discord` });
                 }
             },
         },
@@ -440,7 +448,7 @@ export default definePlugin({
                 const room = args.room.value;
                 cleanup();
                 startView(settings.store.onionAddress, settings.store.onionPort, room);
-                sendBotMessage(ctx.channel.id, `Conectando a sala ${room}`);
+                sendBotMessage(ctx.channel.id, { content: `Conectando a sala ${room}` });
             },
         },
         {
@@ -450,7 +458,7 @@ export default definePlugin({
             options: [],
             async execute(args, ctx) {
                 cleanup();
-                sendBotMessage(ctx.channel.id, "Transmissao encerrada");
+                sendBotMessage(ctx.channel.id, { content: "Transmissao encerrada" });
             },
         },
     ],

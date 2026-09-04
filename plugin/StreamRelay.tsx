@@ -126,6 +126,7 @@ function cleanup() {
 function tryConnect(url: string, mode: string, room?: string | null): Promise<string> {
     return new Promise((resolve, reject) => {
         const s = new WebSocket(url);
+        s.binaryType = "arraybuffer";
         ws = s;
         const timeout = setTimeout(() => { try { s.close(); } catch {} reject(new Error("timeout")); }, 4000);
         s.onopen = () => { clearTimeout(timeout); s.send(JSON.stringify({ type: mode, room: room || undefined })); };
@@ -133,9 +134,9 @@ function tryConnect(url: string, mode: string, room?: string | null): Promise<st
             if (typeof event.data === "string") {
                 const msg = JSON.parse(event.data);
                 if (msg.type === "room") resolve(msg.id);
+                else if (msg.type === "viewing") { clearTimeout(timeout); resolve(msg.room); }
                 else if (msg.type === "error") { clearTimeout(timeout); reject(new Error(msg.msg)); }
                 else if (msg.type === "gone") { showToast("Host desconectado", Toasts.Type.FAILURE); cleanup(); }
-                else if (msg.type === "viewing") showToast(`Conectado na sala ${msg.room}`, Toasts.Type.SUCCESS);
             } else handleFrame(event.data);
         };
         s.onerror = () => { clearTimeout(timeout); reject(new Error("ws error")); };

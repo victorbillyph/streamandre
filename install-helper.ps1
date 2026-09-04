@@ -52,7 +52,29 @@ if ($missing.Count -gt 0) {
             if (Get-Command $dep -ErrorAction SilentlyContinue) { $installed = $true }
         }
         if (-not $installed) {
-            Write-Host "  [ERRO] Falha ao instalar $dep" -ForegroundColor Red
+            # fallback manual download
+            if ($dep -eq "git") {
+                Write-Host "  Baixando Git manualmente..." -ForegroundColor Yellow
+                try {
+                    $url = "https://github.com/git-for-windows/git/releases/latest/download/Git-2.45.0-64-bit.exe"
+                    $tmp = "$env:TEMP\Git-installer.exe"
+                    Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing
+                    Start-Process -FilePath $tmp -ArgumentList "/VERYSILENT /NORESTART" -Wait
+                    $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+                    if (Get-Command git -ErrorAction SilentlyContinue) { $installed = $true }
+                } catch { Write-Host "  Falha download Git: $_" -ForegroundColor Red }
+            } elseif ($dep -eq "node" -or $dep -eq "npm") {
+                Write-Host "  Baixando Node.js manualmente..." -ForegroundColor Yellow
+                try {
+                    $url = "https://nodejs.org/dist/latest-v20.x/node-v20.18.0-x64.msi"
+                    $tmp = "$env:TEMP\node-installer.msi"
+                    Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing
+                    Start-Process -FilePath "msiexec.exe" -ArgumentList "/i `"$tmp`" /quiet /norestart" -Wait
+                    $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+                    if (Get-Command node -ErrorAction SilentlyContinue) { $installed = $true }
+                } catch { Write-Host "  Falha download Node: $_" -ForegroundColor Red }
+            }
+            if (-not $installed) { Write-Host "  [ERRO] Falha ao instalar $dep" -ForegroundColor Red }
         }
     }
     # revalida

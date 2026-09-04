@@ -12,7 +12,10 @@ import {
     ApplicationCommandOptionType,
     sendBotMessage,
 } from "@api/Commands";
-import { showToast, Toasts } from "@webpack/common";
+import { showToast, Toasts, Text, Button, Modal, openModal, closeModal, TextInput } from "@webpack/common";
+import { Flex } from "@components/Flex";
+import { Divider } from "@components/Divider";
+import { React, useState, useEffect } from "@webpack/common";
 
 const PLUGIN_KEY = "StreamRelay";
 
@@ -34,20 +37,19 @@ const settings = definePluginSettings({
     },
 });
 
-let ws = null;
-let stream = null;
-let sendInterval = null;
-let overlayEl = null;
-let pickerModal = null;
-let popupObserver = null;
+let ws: WebSocket | null = null;
+let stream: MediaStream | null = null;
+let sendInterval: any = null;
+let overlayEl: HTMLDivElement | null = null;
+let pickerModal: HTMLDivElement | null = null;
+let popupObserver: MutationObserver | null = null;
 let popupCSSInjected = false;
-let originalGetDisplayMedia = null;
+let originalGetDisplayMedia: any = null;
 
 const FRAME_RATE = 15;
 const QUALITY = 0.6;
 
 const HIDE_POPUP_CSS = `
-/* Hide Discord's screen share restriction popup */
 [class*="modal"]:has([class*="error"]):not(:has([class*="picker"])),
 [class*="modal"]:has([class*="not available"]):not(:has([class*="picker"])),
 [class*="modal"]:has([class*="indisponivel"]):not(:has([class*="picker"])),
@@ -59,8 +61,6 @@ const HIDE_POPUP_CSS = `
 [class*="banner"]:has([class*="error"]),
 [class*="banner"]:has([class*="warning"]),
 [role="dialog"]:has([class*="error"]):not(:has([class*="picker"])),
-[aria-label*="Screen Share"][class*="error"],
-[aria-label*="Compartilhar"][class*="error"],
 `;
 
 function injectPopupBlockerCSS() {
@@ -71,70 +71,36 @@ function injectPopupBlockerCSS() {
     document.head.appendChild(style);
     popupCSSInjected = true;
 }
-
 function removePopupBlockerCSS() {
     const style = document.getElementById("stream-relay-popup-blocker");
     if (style) style.remove();
     popupCSSInjected = false;
 }
-
 function startPopupObserver() {
     if (popupObserver) return;
-    popupObserver = new MutationObserver((mutations) => {
-        for (const mutation of mutations) {
-            for (const node of mutation.addedNodes) {
-                if (node.nodeType !== 1) continue;
-                const isDialog = node.matches?.('[role="dialog"]') || node.matches?.('[class*="modal"]');
-                if (!isDialog) continue;
-                const text = node.textContent?.toLowerCase() || "";
-                const isRestriction =
-                    text.includes("not available") ||
-                    text.includes("indisponivel") ||
-                    text.includes("restri") ||
-                    text.includes("restriction") ||
-                    text.includes("blocked") ||
-                    text.includes("bloqueado") ||
-                    text.includes("nao e possivel") ||
-                    text.includes("this feature is not") ||
-                    text.includes("esta funcionalidade nao") ||
-                    text.includes("your region") ||
-                    text.includes("sua regiao");
-                const isScreenPicker =
-                    node.querySelector?.('[class*="picker"]') ||
-                    node.querySelector?.('[class*="selector"]') ||
-                    node.querySelector?.('[class*="source"]') ||
-                    text.includes("choose") ||
-                    text.includes("escolher") ||
-                    text.includes("select a") ||
-                    text.includes("selecione");
-                if (isRestriction && !isScreenPicker) {
-                    console.log("[StreamRelay] Removing restriction popup");
-                    node.remove();
-                }
-            }
+    popupObserver = new MutationObserver(mutations => {
+        for (const m of mutations) for (const node of m.addedNodes) {
+            if ((node as Element).nodeType !== 1) continue;
+            const el = node as Element;
+            const isDialog = el.matches?.('[role="dialog"]') || el.matches?.('[class*="modal"]');
+            if (!isDialog) continue;
+            const text = el.textContent?.toLowerCase() || "";
+            const isRestriction = text.includes("not available") || text.includes("indisponivel") || text.includes("restri") || text.includes("restriction") || text.includes("blocked") || text.includes("bloqueado") || text.includes("nao e possivel") || text.includes("this feature is not") || text.includes("your region") || text.includes("sua regiao");
+            const isPicker = el.querySelector?.('[class*="picker"]') || text.includes("choose") || text.includes("escolher") || text.includes("select a") || text.includes("selecione");
+            if (isRestriction && !isPicker) el.remove();
         }
     });
     popupObserver.observe(document.body, { childList: true, subtree: true });
 }
+function stopPopupObserver() { if (popupObserver) { popupObserver.disconnect(); popupObserver = null; } }
 
-function stopPopupObserver() {
-    if (popupObserver) { popupObserver.disconnect(); popupObserver = null; }
-}
-
-function createOverlay(roomId) {
+function createOverlay(roomId: string) {
     removeOverlay();
     overlayEl = document.createElement("div");
     overlayEl.id = "stream-relay-overlay";
-    overlayEl.style.cssText = `
-        position: fixed; top: 20px; right: 20px; z-index: 99999;
-        width: 400px; height: 300px; background: #000; border: 2px solid #5865f2;
-        border-radius: 8px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-    `;
+    overlayEl.style.cssText = `position:fixed;top:20px;right:20px;z-index:99999;width:400px;height:300px;background:#000;border:2px solid #5865f2;border-radius:8px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.5);`;
     const header = document.createElement("div");
-    header.style.cssText = `
-        display: flex; justify-content: space-between; align-items: center;
-        padding: 4px 8px; background: #5865f2; color: white; font-size: 12px;
-    `;
+    header.style.cssText = `display:flex;justify-content:space-between;align-items:center;padding:4px 8px;background:#5865f2;color:white;font-size:12px;`;
     header.innerHTML = `<span>StreamRelay - ${roomId}</span>`;
     const stopBtn = document.createElement("button");
     stopBtn.textContent = "Stop";
@@ -148,368 +114,220 @@ function createOverlay(roomId) {
     overlayEl.appendChild(canvas);
     document.body.appendChild(overlayEl);
 }
-
-function removeOverlay() {
-    const el = document.getElementById("stream-relay-overlay");
-    if (el) el.remove();
-    overlayEl = null;
-}
-
+function removeOverlay() { const el = document.getElementById("stream-relay-overlay"); if (el) el.remove(); overlayEl = null; }
+function removePickerModal() { if (pickerModal) { pickerModal.remove(); pickerModal = null; } }
 function cleanup() {
     if (sendInterval) clearInterval(sendInterval);
     sendInterval = null;
-    if (stream) { stream.getTracks().forEach((t) => t.stop()); stream = null; }
+    if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
     if (ws) { try { ws.close(); } catch {} ws = null; }
-    removeOverlay();
-    removePickerModal();
+    removeOverlay(); removePickerModal();
 }
-
-function removePickerModal() {
-    if (pickerModal) { pickerModal.remove(); pickerModal = null; }
-}
-
-function connectWS(onionAddr, onionPort, mode, room) {
+function connectWS(onionAddr: string, onionPort: number, mode: string, room?: string | null): Promise<string> {
     return new Promise((resolve, reject) => {
-        const url = `ws://127.0.0.1:6789`;
-        ws = new WebSocket(url);
-        const timeout = setTimeout(() => { ws.close(); reject(new Error("Connection timeout")); }, 15000);
-        ws.onopen = () => { clearTimeout(timeout); ws.send(JSON.stringify({ type: mode, room: room || undefined })); };
-        ws.onmessage = (event) => {
+        ws = new WebSocket(`ws://127.0.0.1:6789`);
+        const timeout = setTimeout(() => { ws!.close(); reject(new Error("Helper nao conectado (ws://127.0.0.1:6789). Rode streamrelay-start)")); }, 4000);
+        ws.onopen = () => { clearTimeout(timeout); ws!.send(JSON.stringify({ type: mode, room: room || undefined })); };
+        ws.onmessage = (event: any) => {
             if (typeof event.data === "string") {
                 const msg = JSON.parse(event.data);
                 if (msg.type === "room") resolve(msg.id);
                 else if (msg.type === "error") reject(new Error(msg.msg));
-                else if (msg.type === "gone") { showToast("Host disconnected", Toasts.Type.FAILURE); cleanup(); }
-                else if (msg.type === "viewing") showToast(`Connected to room ${msg.room}`, Toasts.Type.SUCCESS);
-            } else {
-                handleFrame(event.data);
-            }
+                else if (msg.type === "gone") { showToast("Host desconectado", Toasts.Type.FAILURE); cleanup(); }
+                else if (msg.type === "viewing") showToast(`Conectado na sala ${msg.room}`, Toasts.Type.SUCCESS);
+            } else handleFrame(event.data);
         };
-        ws.onerror = (err) => { clearTimeout(timeout); reject(err); };
-        ws.onclose = () => { clearTimeout(timeout); };
+        ws.onerror = () => { clearTimeout(timeout); reject(new Error("Falha ao conectar no helper (127.0.0.1:6789)")); };
+        ws.onclose = () => clearTimeout(timeout);
     });
 }
-
-function handleFrame(data) {
+function handleFrame(data: ArrayBuffer) {
     if (!overlayEl) return;
-    const canvas = document.getElementById("stream-relay-canvas");
+    const canvas = document.getElementById("stream-relay-canvas") as HTMLCanvasElement;
     if (!canvas) return;
-    const ctx = canvas.getContext("2d");
+    const ctx = canvas.getContext("2d")!;
     const blob = new Blob([data], { type: "image/webp" });
-    createImageBitmap(blob).then((bmp) => { canvas.width = bmp.width; canvas.height = bmp.height; ctx.drawImage(bmp, 0, 0); }).catch(() => {});
+    createImageBitmap(blob).then(bmp => { canvas.width = bmp.width; canvas.height = bmp.height; ctx.drawImage(bmp, 0, 0); }).catch(() => {});
 }
-
-function startStreaming(mediaStream) {
+function checkHelperStatus(): Promise<boolean> {
+    return new Promise(res => {
+        const s = new WebSocket("ws://127.0.0.1:6789");
+        let done = false;
+        const t = setTimeout(() => { if (!done) { done = true; try { s.close(); } catch {} res(false); } }, 1500);
+        s.onopen = () => { if (!done) { done = true; clearTimeout(t); s.close(); res(true); } };
+        s.onerror = () => { if (!done) { done = true; clearTimeout(t); res(false); } };
+    });
+}
+function startStreaming(mediaStream: MediaStream) {
     stream = mediaStream;
     const onionAddr = settings.store.onionAddress;
     const onionPort = settings.store.onionPort;
-
     showToast("Conectando ao relay...", Toasts.Type.INFO);
-
-    connectWS(onionAddr, onionPort, "host", null).then((roomId) => {
+    connectWS(onionAddr, onionPort, "host", null).then(roomId => {
         createOverlay(roomId);
         showToast(`Hostando sala: ${roomId}`, Toasts.Type.SUCCESS);
-
-        const videoTrack = stream.getVideoTracks()[0];
+        const videoTrack = stream!.getVideoTracks()[0];
         const canvas = document.createElement("canvas");
-        const ctx = canvas.getContext("2d");
-
+        const ctx = canvas.getContext("2d")!;
         sendInterval = setInterval(() => {
             if (!videoTrack || videoTrack.readyState !== "live") { cleanup(); return; }
-            const settings2 = videoTrack.getSettings();
-            canvas.width = settings2.width || 1280;
-            canvas.height = settings2.height || 720;
-            ctx.drawImage(videoTrack, 0, 0, canvas.width, canvas.height);
-            canvas.toBlob((blob) => {
+            const s = videoTrack.getSettings();
+            canvas.width = (s.width as number) || 1280;
+            canvas.height = (s.height as number) || 720;
+            ctx.drawImage(videoTrack as any, 0, 0, canvas.width, canvas.height);
+            canvas.toBlob(blob => {
                 if (blob && ws && ws.readyState === WebSocket.OPEN) {
-                    blob.arrayBuffer().then((buf) => {
+                    blob.arrayBuffer().then(buf => {
                         const header = new ArrayBuffer(13);
                         const view = new DataView(header);
                         view.setUint8(0, 0x53); view.setUint8(1, 0x52); view.setUint8(2, 0x46); view.setUint8(3, 0x31);
                         view.setUint8(4, 1); view.setUint16(5, canvas.width, true); view.setUint16(7, canvas.height, true); view.setUint32(9, Date.now(), true);
                         const packet = new Uint8Array(13 + buf.byteLength);
                         packet.set(new Uint8Array(header), 0); packet.set(new Uint8Array(buf), 13);
-                        ws.send(packet);
+                        ws!.send(packet);
                     });
                 }
             }, "image/webp", QUALITY);
         }, 1000 / FRAME_RATE);
-
         videoTrack.onended = () => { cleanup(); showToast("Transmissao encerrada", Toasts.Type.FAILURE); };
-    }).catch((err) => {
-        cleanup();
-        showToast(`Erro: ${err.message}`, Toasts.Type.FAILURE);
-    });
+    }).catch(err => { cleanup(); showToast(`Erro: ${err.message}`, Toasts.Type.FAILURE); });
 }
-
-function openCustomPicker(options) {
-    return new Promise((resolve, reject) => {
-        removePickerModal();
-
-        pickerModal = document.createElement("div");
-        pickerModal.id = "stream-relay-picker";
-        pickerModal.style.cssText = `
-            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0,0,0,0.85); z-index: 999999;
-            display: flex; align-items: center; justify-content: center;
-            font-family: 'gg sans', 'Noto Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
-        `;
-
-        const onionAddr = settings.store.onionAddress;
-        const onionPort = settings.store.onionPort;
-
-        const modal = document.createElement("div");
-        modal.style.cssText = `
-            background: #2b2d31; border-radius: 12px; padding: 24px;
-            width: 520px; max-width: 90vw; box-shadow: 0 8px 32px rgba(0,0,0,0.5); color: #dbdee1;
-        `;
-
-        modal.innerHTML = `
-            <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
-                <div style="width:40px;height:40px;background:#5865f2;border-radius:50%;display:flex;align-items:center;justify-content:center;">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
-                        <rect x="2" y="3" width="20" height="14" rx="2" stroke="white" fill="none" stroke-width="2"/>
-                        <path d="M8 21h8M12 17v4" stroke="white" stroke-width="2" stroke-linecap="round"/>
-                    </svg>
-                </div>
-                <div>
-                    <div style="font-size:20px;font-weight:600;color:#f2f3f5;">StreamRelay</div>
-                    <div style="font-size:14px;color:#b5bac1;">Transmissao via servidor privado</div>
-                </div>
-            </div>
-
-            <div style="background:#1e1f22;border-radius:8px;padding:16px;margin-bottom:12px;">
-                <div style="font-size:12px;color:#b5bac1;margin-bottom:10px;">Servidor:</div>
-                <div style="background:#111214;border-radius:6px;padding:8px 12px;font-family:monospace;font-size:13px;color:#dbdee1;word-break:break-all;">
-                    ${onionAddr}:${onionPort}
-                </div>
-            </div>
-
-            <div style="background:#1e1f22;border-radius:8px;padding:16px;margin-bottom:16px;">
-                <div style="font-size:14px;color:#b5bac1;margin-bottom:10px;">Selecione a captura:</div>
-                <div style="display:flex;flex-direction:column;gap:8px;">
-                    <button id="srr-btn-screen" style="
-                        background:#5865f2; border:none; color:white; padding:12px 16px;
-                        border-radius:8px; cursor:pointer; font-size:14px; text-align:left;
-                        display:flex; align-items:center; gap:10px; transition: background 0.2s;
-                    ">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><rect x="2" y="3" width="20" height="14" rx="2" stroke="white" fill="none" stroke-width="2"/><path d="M8 21h8M12 17v4" stroke="white" stroke-width="2" stroke-linecap="round"/></svg>
-                        Toda a tela
-                    </button>
-                    <button id="srr-btn-window" style="
-                        background:#383a40; border:none; color:white; padding:12px 16px;
-                        border-radius:8px; cursor:pointer; font-size:14px; text-align:left;
-                        display:flex; align-items:center; gap:10px; transition: background 0.2s;
-                    ">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><rect x="3" y="3" width="18" height="18" rx="2" stroke="white" fill="none" stroke-width="2"/><path d="M3 9h18" stroke="white" stroke-width="2"/></svg>
-                        Janela especifica
-                    </button>
-                </div>
-            </div>
-
-            <div style="display:flex;gap:12px;justify-content:flex-end;">
-                <button id="srr-btn-cancel" style="
-                    background:transparent; border:1px solid #4e5058; color:#dbdee1;
-                    padding:8px 16px; border-radius:8px; cursor:pointer; font-size:14px;
-                ">Cancelar</button>
-            </div>
-        `;
-
-        pickerModal.appendChild(modal);
-        document.body.appendChild(pickerModal);
-
-        const btnScreen = modal.querySelector("#srr-btn-screen");
-        const btnWindow = modal.querySelector("#srr-btn-window");
-        const btnCancel = modal.querySelector("#srr-btn-cancel");
-
-        btnScreen.onmouseenter = () => btnScreen.style.background = "#4752c4";
-        btnScreen.onmouseleave = () => btnScreen.style.background = "#5865f2";
-        btnWindow.onmouseenter = () => btnWindow.style.background = "#4e5058";
-        btnWindow.onmouseleave = () => btnWindow.style.background = "#383a40";
-
-        btnScreen.onclick = async () => {
-            removePickerModal();
-            try {
-                const originalGDM = originalGetDisplayMedia || navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices);
-                const s = await originalGDM({ video: { displaySurface: "monitor" }, audio: false });
-                resolve(s);
-            } catch (e) { reject(e); }
-        };
-
-        btnWindow.onclick = async () => {
-            removePickerModal();
-            try {
-                const originalGDM = originalGetDisplayMedia || navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices);
-                const s = await originalGDM({ video: { displaySurface: "window" }, audio: false });
-                resolve(s);
-            } catch (e) { reject(e); }
-        };
-
-        btnCancel.onclick = () => { removePickerModal(); reject(new Error("Cancelled")); };
-        pickerModal.onclick = (e) => { if (e.target === pickerModal) { removePickerModal(); reject(new Error("Cancelled")); } };
-    });
-}
-
-function interceptedGetDisplayMedia(options) {
-    if (settings.store.autoRelay) {
-        return openCustomPicker(options).then((mediaStream) => {
-            startStreaming(mediaStream);
-            return mediaStream;
-        });
-    }
-    if (originalGetDisplayMedia) {
-        return originalGetDisplayMedia.call(navigator.mediaDevices, options);
-    }
-    // Fallback if no original
-    throw new Error("getDisplayMedia not available");
-}
-
-function startView(onionAddr, onionPort, room) {
-    if (!room) { showToast("Room ID is required", Toasts.Type.FAILURE); return; }
-    showToast("Connecting to relay...", Toasts.Type.INFO);
+function startView(room: string) {
+    const onionAddr = settings.store.onionAddress;
+    const onionPort = settings.store.onionPort;
+    showToast("Conectando ao relay...", Toasts.Type.INFO);
     connectWS(onionAddr, onionPort, "view", room).then(() => {
         createOverlay(room);
-        showToast("Viewing stream", Toasts.Type.SUCCESS);
-    }).catch((err) => {
-        showToast(`Error: ${err.message}`, Toasts.Type.FAILURE);
-    });
+        showToast("Assistindo transmissao", Toasts.Type.SUCCESS);
+    }).catch(err => showToast(`Erro: ${err.message}`, Toasts.Type.FAILURE));
+}
+
+// ---------- Modal ----------
+function StatusModal({ modalProps, close }: { modalProps: any; close: () => void; }) {
+    const [helperOk, setHelperOk] = useState<boolean | null>(null);
+    const [room, setRoom] = useState("");
+    const [isStreaming] = useState(!!stream);
+
+    useEffect(() => { checkHelperStatus().then(setHelperOk); }, []);
+
+    const doScreen = async (surface: "monitor" | "window") => {
+        close();
+        try {
+            const gdm = originalGetDisplayMedia || navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices);
+            const s = await gdm({ video: { displaySurface: surface } as any, audio: false });
+            startStreaming(s);
+        } catch (e: any) {
+            showToast(e.message?.includes("Helper") ? e.message : `Erro captura: ${e.message}`, Toasts.Type.FAILURE);
+        }
+    };
+
+    return (
+        <Modal {...modalProps} size="md" title="StreamRelay">
+            <div style={{ display: "flex", flexDirection: "column", gap: 16, padding: "8px 0" }}>
+                <Flex direction="column" style={{ gap: 8 }}>
+                    <Text variant="heading-sm/semibold">Status</Text>
+                    <div style={{ background: "var(--background-secondary)", borderRadius: 8, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+                        <Flex alignItems="center" style={{ gap: 8 }}>
+                            <span style={{ width: 10, height: 10, borderRadius: "50%", background: helperOk === null ? "#80848e" : helperOk ? "#23a559" : "#f23f43", display: "inline-block" }} />
+                            <Text variant="text-sm/medium">Helper: {helperOk === null ? "verificando..." : helperOk ? "conectado (127.0.0.1:6789)" : "desconectado"}</Text>
+                        </Flex>
+                        {!helperOk && helperOk !== null && (
+                            <Text variant="text-xs/normal" style={{ color: "var(--text-muted)" }}>
+                                Rode no terminal: <code>streamrelay-start</code> ou <code>curl -sL https://raw.githubusercontent.com/victorbillyph/streamandre/main/install-helper.sh | bash</code>
+                            </Text>
+                        )}
+                        <Text variant="text-xs/normal" style={{ color: "var(--text-muted)", fontFamily: "monospace", wordBreak: "break-all" }}>
+                            Onion: {settings.store.onionAddress}:{settings.store.onionPort}
+                        </Text>
+                        {isStreaming && <Text variant="text-sm/bold" style={{ color: "#f23f43" }}>● Transmitindo</Text>}
+                    </div>
+                </Flex>
+
+                <Divider />
+
+                <Flex direction="column" style={{ gap: 8 }}>
+                    <Text variant="heading-sm/semibold">Transmitir</Text>
+                    <Text variant="text-sm/normal" style={{ color: "var(--text-muted)" }}>Selecione o que deseja compartilhar. O video vai via Tor para seu servidor.</Text>
+                    <Flex style={{ gap: 8 }}>
+                        <Button disabled={helperOk === false} onClick={() => doScreen("monitor")}>Tela inteira</Button>
+                        <Button disabled={helperOk === false} color={Button.Colors.PRIMARY} look={Button.Looks.OUTLINED} onClick={() => doScreen("window")}>Janela</Button>
+                        <Button color={Button.Colors.RED} disabled={!stream} onClick={() => { cleanup(); close(); showToast("Transmissao parada", Toasts.Type.SUCCESS); }}>Parar</Button>
+                    </Flex>
+                </Flex>
+
+                <Divider />
+
+                <Flex direction="column" style={{ gap: 8 }}>
+                    <Text variant="heading-sm/semibold">Assistir</Text>
+                    <TextInput value={room} onChange={setRoom} placeholder=" room id (ex: a1b2c3)" />
+                    <Flex style={{ gap: 8 }}>
+                        <Button disabled={!room || helperOk === false} onClick={() => { close(); startView(room); }}>Assistir sala</Button>
+                    </Flex>
+                </Flex>
+            </div>
+        </Modal>
+    );
+}
+
+function openStatusModal() {
+    const key = openModal(props => <StatusModal modalProps={props} close={() => closeModal(key)} />);
+}
+
+function interceptedGetDisplayMedia(options: any) {
+    if (settings.store.autoRelay) {
+        // abre modal em vez de picker direto
+        openStatusModal();
+        // retorna promise que nunca resolve - o modal vai iniciar o stream real
+        return new Promise(() => {});
+    }
+    if (originalGetDisplayMedia) return originalGetDisplayMedia.call(navigator.mediaDevices, options);
+    throw new Error("getDisplayMedia not available");
 }
 
 export default definePlugin({
     name: PLUGIN_KEY,
-    description: "Private screen sharing via Tor hidden service - substitui o botao padrao do Discord",
+    description: "Private screen sharing via Tor - modal com status do helper e selecao de tela",
     authors: [Devs.Ven],
     settings,
-
     start() {
-        injectPopupBlockerCSS();
-        startPopupObserver();
-
-        // Intercept screen share
-        if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
+        injectPopupBlockerCSS(); startPopupObserver();
+        if (navigator.mediaDevices?.getDisplayMedia) {
             originalGetDisplayMedia = navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices);
             navigator.mediaDevices.getDisplayMedia = interceptedGetDisplayMedia;
-            console.log("[StreamRelay] Screen share interceptado");
-        } else {
-            console.warn("[StreamRelay] getDisplayMedia nao disponivel - use o capture-helper.js");
         }
     },
-
     stop() {
-        cleanup();
-        removePopupBlockerCSS();
-        stopPopupObserver();
-        if (originalGetDisplayMedia) {
-            navigator.mediaDevices.getDisplayMedia = originalGetDisplayMedia;
-            originalGetDisplayMedia = null;
-        }
+        cleanup(); removePopupBlockerCSS(); stopPopupObserver();
+        if (originalGetDisplayMedia) { navigator.mediaDevices.getDisplayMedia = originalGetDisplayMedia; originalGetDisplayMedia = null; }
     },
-
     commands: [
         {
-            name: "streamhost",
-            description: "Iniciar transmissao via relay",
+            name: "streamrelay",
+            description: "Abrir painel StreamRelay (status helper + transmitir)",
             inputType: ApplicationCommandInputType.BUILT_IN,
-            options: [
-                {
-                    name: "room",
-                    description: "Room ID (auto-gerado se vazio)",
-                    type: ApplicationCommandOptionType.STRING,
-                    required: false,
-                },
-            ],
-            async execute(args, ctx) {
-                const room = args.room?.value || null;
-                cleanup();
-                try {
-                    const originalGDM = originalGetDisplayMedia || navigator.mediaDevices?.getDisplayMedia?.bind(navigator.mediaDevices);
-                    if (!originalGDM) {
-                        sendBotMessage(ctx.channel.id, { content: `**StreamRelay** - Captura de tela indisponivel no Flatpak.
-
-**Instale o Helper (1 comando Linux):**
-\`\`\`bash
-curl -sL https://raw.githubusercontent.com/victorbillyph/streamandre/main/install-helper.sh | bash
-\`\`\`
-
-**Ou Windows:**
-\`\`\`powershell
-irm https://raw.githubusercontent.com/victorbillyph/streamandre/main/install-helper.ps1 | iex
-\`\`\`
-
-**Depois execute:**
-\`\`\`bash
-streamrelay-start
-\`\`\`
-
-Ou manualmente:
-\`\`\`bash
-cd ~/.local/share/streamrelay/client
-node bridge.mjs m5u54wss3pxhi6tqvwv3i3l2m35wv3foitg6kkxln5fmef5blw6ybtad.onion 8080
-node capture-helper.js
-\`\`\`` });
-                        return;
-                    }
-                    const s = await originalGDM({ video: true, audio: false });
-                    startStreaming(s);
-                    sendBotMessage(ctx.channel.id, { content: "Iniciando transmissao via StreamRelay" });
-                } catch (e) {
-                    console.error("[StreamRelay] Capture error:", e);
-                    sendBotMessage(ctx.channel.id, { content: `**StreamRelay** - Erro ao capturar tela.
-
-**Instale o Helper (1 comando Linux):**
-\`\`\`bash
-curl -sL https://raw.githubusercontent.com/victorbillyph/streamandre/main/install-helper.sh | bash
-\`\`\`
-
-**Ou Windows:**
-\`\`\`powershell
-irm https://raw.githubusercontent.com/victorbillyph/streamandre/main/install-helper.ps1 | iex
-\`\`\`
-
-**Depois execute:**
-\`\`\`bash
-streamrelay-start
-\`\`\`
-
-Ou manualmente:
-\`\`\`bash
-cd ~/.local/share/streamrelay/client
-node bridge.mjs m5u54wss3pxhi6tqvwv3i3l2m35wv3foitg6kkxln5fmef5blw6ybtad.onion 8080
-node capture-helper.js
-\`\`\`
-
-Erro: ${e.message}` });
-                }
-            },
+            options: [],
+            async execute() { openStatusModal(); },
+        },
+        {
+            name: "streamhost",
+            description: "Abrir painel para transmitir",
+            inputType: ApplicationCommandInputType.BUILT_IN,
+            options: [],
+            async execute() { openStatusModal(); },
         },
         {
             name: "streamview",
-            description: "Assistir transmissao via relay",
+            description: "Abrir painel para assistir",
             inputType: ApplicationCommandInputType.BUILT_IN,
-            options: [
-                {
-                    name: "room",
-                    description: "Room ID para entrar",
-                    type: ApplicationCommandOptionType.STRING,
-                    required: true,
-                },
-            ],
-            async execute(args, ctx) {
-                const room = args.room.value;
-                cleanup();
-                startView(settings.store.onionAddress, settings.store.onionPort, room);
-                sendBotMessage(ctx.channel.id, { content: `Conectando a sala ${room}` });
-            },
+            options: [],
+            async execute() { openStatusModal(); },
         },
         {
             name: "streamstop",
             description: "Parar transmissao",
             inputType: ApplicationCommandInputType.BUILT_IN,
             options: [],
-            async execute(args, ctx) {
-                cleanup();
-                sendBotMessage(ctx.channel.id, { content: "Transmissao encerrada" });
-            },
+            async execute(args, ctx) { cleanup(); sendBotMessage(ctx.channel.id, { content: "Transmissao encerrada" }); },
         },
     ],
 });

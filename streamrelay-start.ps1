@@ -161,14 +161,26 @@ function Ensure-Deps {
                 Write-Host "Baixando Git manualmente..." -ForegroundColor Yellow
                 $url = "https://github.com/git-for-windows/git/releases/download/v2.45.1.windows.1/Git-2.45.1-64-bit.exe"
                 $tmp = "$env:TEMP\Git-installer.exe"
-                try { Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing -Headers @{"Cache-Control"="no-cache"} } catch { curl.exe -L $url -o $tmp }
+                try {
+                    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+                    Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing -MaximumRedirection 5
+                    if ((Get-Item $tmp).Length -lt 1MB) { throw "pequeno" }
+                } catch {
+                    try { Start-BitsTransfer -Source $url -Destination $tmp -ErrorAction Stop } catch { curl.exe -L $url -o $tmp }
+                }
                 Start-Process -FilePath $tmp -ArgumentList "/VERYSILENT /NORESTART" -Wait
                 $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
             } elseif ($dep -eq "node") {
                 Write-Host "Baixando Node.js manualmente..." -ForegroundColor Yellow
                 $url = "https://nodejs.org/dist/v20.18.0/node-v20.18.0-x64.msi"
                 $tmp = "$env:TEMP\node-installer.msi"
-                try { Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing -Headers @{"Cache-Control"="no-cache"} } catch { curl.exe -L $url -o $tmp }
+                try {
+                    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+                    Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing -MaximumRedirection 5
+                    if ((Get-Item $tmp).Length -lt 1MB) { throw "pequeno" }
+                } catch {
+                    try { Start-BitsTransfer -Source $url -Destination $tmp -ErrorAction Stop } catch { curl.exe -L $url -o $tmp }
+                }
                 Start-Process -FilePath "msiexec.exe" -ArgumentList "/i `"$tmp`" /quiet /norestart" -Wait
                 $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
             } elseif ($dep -eq "pnpm") {

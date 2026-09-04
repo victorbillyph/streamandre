@@ -65,7 +65,15 @@ if ($missing.Count -gt 0) {
                 try {
                     $url = "https://github.com/git-for-windows/git/releases/download/v2.45.1.windows.1/Git-2.45.1-64-bit.exe"
                     $tmp = "$env:TEMP\Git-installer.exe"
-                    try { Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing -Headers @{"Cache-Control"="no-cache"} } catch { try { curl.exe -L $url -o $tmp } catch {} }
+                    try {
+                        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+                        Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing -Headers @{"Cache-Control"="no-cache"} -MaximumRedirection 5
+                        if ((Get-Item $tmp).Length -lt 1MB) { throw "arquivo pequeno" }
+                    } catch {
+                        try { Start-BitsTransfer -Source $url -Destination $tmp -ErrorAction Stop } catch {
+                            try { curl.exe -L $url -o $tmp } catch {}
+                        }
+                    }
                     Start-Process -FilePath $tmp -ArgumentList "/VERYSILENT /NORESTART /SP-" -Wait
                     $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User") + ";C:\Program Files\Git\cmd;C:\Program Files\Git\bin"
                     if (Get-Command git -ErrorAction SilentlyContinue) { $installed = $true } elseif (Test-Path "C:\Program Files\Git\cmd\git.exe") { $env:Path += ";C:\Program Files\Git\cmd"; $installed = $true }
@@ -75,7 +83,15 @@ if ($missing.Count -gt 0) {
                 try {
                     $url = "https://nodejs.org/dist/v20.18.0/node-v20.18.0-x64.msi"
                     $tmp = "$env:TEMP\node-installer.msi"
-                    try { Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing -Headers @{"Cache-Control"="no-cache"} } catch { try { curl.exe -L $url -o $tmp } catch {} }
+                    try {
+                        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+                        Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing -Headers @{"Cache-Control"="no-cache"} -MaximumRedirection 5
+                        if ((Get-Item $tmp).Length -lt 1MB) { throw "arquivo pequeno" }
+                    } catch {
+                        try { Start-BitsTransfer -Source $url -Destination $tmp -ErrorAction Stop } catch {
+                            try { curl.exe -L $url -o $tmp } catch {}
+                        }
+                    }
                     Start-Process -FilePath "msiexec.exe" -ArgumentList "/i `"$tmp`" /quiet /norestart" -Wait
                     $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User") + ";C:\Program Files\nodejs"
                     if (Get-Command node -ErrorAction SilentlyContinue) { $installed = $true } elseif (Test-Path "C:\Program Files\nodejs\node.exe") { $env:Path += ";C:\Program Files\nodejs"; $installed = $true }

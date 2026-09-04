@@ -121,7 +121,7 @@ function Update-Helper {
             Write-Host "Nova versao encontrada, atualizando..." -ForegroundColor Yellow
             git pull --ff-only --quiet
             Write-Host "Atualizado!" -ForegroundColor Green
-            Push-Location "$INSTALL_DIR\client"; npm install --silent; Pop-Location
+            Push-Location "$INSTALL_DIR\client"; cmd /c "npm.cmd install --silent"; Pop-Location
             if ((Test-Path "$INSTALL_DIR\plugin\StreamRelay.tsx") -and (Test-Path "$env:USERPROFILE\Vencord\src\userplugins\StreamRelay.tsx")) {
                 $a = Get-FileHash "$INSTALL_DIR\plugin\StreamRelay.tsx"
                 $b = Get-FileHash "$env:USERPROFILE\Vencord\src\userplugins\StreamRelay.tsx"
@@ -184,7 +184,7 @@ function Ensure-Deps {
                 Start-Process -FilePath "msiexec.exe" -ArgumentList "/i `"$tmp`" /quiet /norestart" -Wait
                 $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
             } elseif ($dep -eq "pnpm") {
-                npm install -g pnpm
+                cmd /c "npm.cmd install -g pnpm"
                 $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
             }
             if (-not (Get-Command $dep -ErrorAction SilentlyContinue)) {
@@ -213,7 +213,7 @@ function Ensure-VencordPlugin {
     Copy-Item $PLUGIN_SRC $USERPLUGIN -Force
     Write-Host "Instalando dependencias e compilando..." -ForegroundColor Yellow
     Push-Location $VENCORD_DIR
-    pnpm install; pnpm build
+    cmd /c "pnpm.cmd install"; cmd /c "pnpm.cmd build"
     Pop-Location
     Write-Host "Patchando Discord (Admin necessario)..." -ForegroundColor Yellow
     Push-Location $VENCORD_DIR

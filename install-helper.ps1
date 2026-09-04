@@ -115,7 +115,7 @@ if (Test-Path "$INSTALL_DIR\.git") {
 Write-Host ""
 Write-Host "Instalando dependencias Node.js..." -ForegroundColor Cyan
 Set-Location "$INSTALL_DIR\client"
-npm install
+cmd /c "npm.cmd install"
 
 Write-Host ""
 Write-Host "Criando script de inicializacao..." -ForegroundColor Cyan

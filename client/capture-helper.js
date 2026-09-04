@@ -36,16 +36,15 @@ function connect() {
 
 function captureFrame() {
     try {
-        const tmpFile = '/tmp/sr_capture.webp';
-        execSync(`grim -t webp -q 50 "${tmpFile}" 2>/dev/null`, { timeout: 3000 });
+        const tmpFile = '/tmp/sr_capture.jpeg';
+        execSync(`grim -t jpeg -q 60 "${tmpFile}" 2>/dev/null`, { timeout: 3000 });
         if (!fs.existsSync(tmpFile)) return null;
         const buf = fs.readFileSync(tmpFile);
         if (buf.length < 100) return null;
-        let width = 1920, height = 1080;
-        try { const w = buf.readUInt16LE(26); width = w & 0x3FFF; height = buf.readUInt16LE(28) & 0x3FFF; } catch {}
+        // JPEG no header dims, usar 1920x1080 fallback (viewer usa bmp dims)
         const header = Buffer.alloc(13);
-        header.write('SRF1', 0); header.writeUInt8(1, 4);
-        header.writeUInt16LE(width, 5); header.writeUInt16LE(height, 7); header.writeUInt32LE(Date.now(), 9);
+        header.write('SRF1', 0); header.writeUInt8(0, 4); // 0=jpeg
+        header.writeUInt16LE(1920, 5); header.writeUInt16LE(1080, 7); header.writeUInt32LE(Date.now(), 9);
         return Buffer.concat([header, buf]);
     } catch { return null; }
 }

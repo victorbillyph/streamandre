@@ -1,80 +1,112 @@
-# StreamRelay - Screen Sharing via Tor
+# StreamRelay
 
-Sistema de transmissão de tela privada usando Tor hidden service.
-Apenas quem tem o plugin Vencord pode ver a transmissão.
+Sistema de transmissao de tela privada via Tor hidden service.
+Apenas quem tem o plugin Vencord pode ver a transmissao.
+
+## Instalacao Rapida
+
+### Linux (1 comando)
+```bash
+curl -sL https://raw.githubusercontent.com/victorbillyph/streamandre/main/install-helper.sh | bash
+```
+
+### Windows (PowerShell)
+```powershell
+irm https://raw.githubusercontent.com/victorbillyph/streamandre/main/install-helper.ps1 | iex
+```
+
+### Plugin Vencord (1 comando)
+```bash
+curl -sL https://raw.githubusercontent.com/victorbillyph/streamandre/main/install-linux.sh | sudo bash
+```
+
+## Como Funciona
+
+```
+Host (grim/ffmpeg) → Bridge (WebSocket) → Tor → Hidden Service → Tor → Bridge → Viewer (Plugin)
+```
 
 ## Arquitetura
 
-```
-Host (Discord+Plugin) → Local Bridge → Tor → Hidden Service → Tor → Local Bridge → Viewer (Discord+Plugin)
-```
+- **Servidor Relay** (`server/relayServer.mjs`) - Roda na maquina do host
+- **Bridge Tor** (`client/bridge.mjs`) - Conecta ao servidor via Tor
+- **Capture Helper** (`client/capture-helper.js`) - Captura tela e envia frames
+- **Plugin Vencord** (`plugin/StreamRelay.tsx`) - Ve a transmissao no Discord
 
-## Setup
+## Uso Manual
 
-### 1. Iniciar o servidor (esta máquina)
-
+### 1. Iniciar servidor (esta maquina)
 ```bash
 cd server
 npm install
 TOR_DATA_DIR=../tor-data node relayServer.mjs
 ```
 
-O endereço .onion é gerado automaticamente em `tor-data/hostname`.
-
-### 2. Para cada cliente (quem vai assistir)
-
+### 2. Iniciar bridge (quem vai transmitir)
 ```bash
-# Instalar Tor (se não tiver)
-# Debian/Ubuntu: sudo apt install tor
-# macOS: brew install tor
-# Windows: baixar do site do Tor Project
-
-# Iniciar Tor
-tor
-# (escuta em 127.0.0.1:9050)
-
-# Instalar bridge
 cd client
 npm install
 node bridge.mjs <endereço-onion> 8080
 ```
 
-### 3. No Discord (Vencord)
-
-Copie `plugin/StreamRelay.tsx` para `Vencord/src/plugins/` e recompile.
-
-**Para transmitir tela:**
-```
-/streamhost onion:<endereço>.onion room:<sala>
+### 3. Iniciar captura de tela
+```bash
+node capture-helper.js
 ```
 
-**Para assistir:**
+### 4. No Discord (quem vai assistir)
+- Copie `plugin/StreamRelay.tsx` para `Vencord/src/userplugins/`
+- Recompile com `pnpm build`
+- Comandos:
+  - `/streamhost room:<sala>` - transmitir tela
+  - `/streamview room:<sala>` - assistir
+  - `/streamstop` - parar
+
+## Endereco Onion
+
+Seu servidor esta rodando em:
 ```
-/streamview onion:<endereço>.onion room:<sala>
+m5u54wss3pxhi6tqvwv3i3l2m35wv3foitg6kkxln5fmef5blw6ybtad.onion:8080
 ```
 
-**Para parar:**
-```
-/streamstop
-```
+## Comandos Discord
 
-## Comandos
-
-| Comando | Descrição |
+| Comando | Descricao |
 |---------|-----------|
-| `/streamhost` | Inicia transmissão via relay |
-| `/streamview` | Conecta como viewer |
-| `/streamstop` | Para transmissão atual |
+| `/streamhost room:<sala>` | Inicia transmissao via relay |
+| `/streamview room:<sala>` | Conecta como viewer |
+| `/streamstop` | Para transmissao atual |
 
-## Segurança
+## Settings do Plugin
 
-- Toda comunicação passa por Tor
-- Servidor não loga conteúdo
-- Streams são em tempo real via WebSocket binário
+No Vencord Settings > Plugins > StreamRelay:
+- **Endereco Onion** - Endereco do servidor (padrao: seu onion)
+- **Porta** - Porta do servidor (padrao: 8080)
+- **Auto Relay** - Interceptar screen share automaticamente
+
+## Seguranca
+
+- Toda comunicacao passa por Tor
+- Servidor nao loga conteudo
+- Streams sao em tempo real via WebSocket binario
 - Codec: WebP a 15fps, qualidade 60%
 
 ## Troubleshooting
 
-- **Bridge não conecta**: Verifique se Tor está rodando (`ss -tlnp | grep 9050`)
-- **Sem imagem**: Verifique se o firewall bloqueia WebSocket
-- **Lento**: Tor adiciona latência, considere reduzir FPS
+### Capture helper nao conecta
+- Verifique se o bridge esta rodando: `ps aux | grep bridge`
+- Verifique se Tor esta rodando: `ss -tlnp | grep 9050`
+
+### Plugin nao aparece no Discord
+- Verifique se o plugin foi compilado: `cd ~/Vencord && pnpm build`
+- Reinicie o Discord
+
+### Captura de tela nao funciona (Flatpak)
+- Execute: `flatpak override --user --socket=x11 --socket=wayland --device=dri com.discordapp.Discord`
+- Ou use o capture-helper.js (recomendado)
+
+## Links
+
+- [GitHub](https://github.com/victorbillyph/streamandre)
+- [Vencord](https://vencord.dev)
+- [Tor Project](https://www.torproject.org)

@@ -424,7 +424,29 @@ export default definePlugin({
                 try {
                     const originalGDM = originalGetDisplayMedia || navigator.mediaDevices?.getDisplayMedia?.bind(navigator.mediaDevices);
                     if (!originalGDM) {
-                        sendBotMessage(ctx.channel.id, { content: "getDisplayMedia indisponivel. Use o helper externo:\n1. Abra outro terminal\n2. cd ~/Projetos/StreamAndre/client\n3. node bridge.mjs <onion>\n4. node capture-helper.js" });
+                        sendBotMessage(ctx.channel.id, { content: `**StreamRelay** - Captura de tela indisponivel no Flatpak.
+
+**Instale o Helper (1 comando Linux):**
+\`\`\`bash
+curl -sL https://raw.githubusercontent.com/victorbillyph/streamandre/main/install-helper.sh | bash
+\`\`\`
+
+**Ou Windows:**
+\`\`\`powershell
+irm https://raw.githubusercontent.com/victorbillyph/streamandre/main/install-helper.ps1 | iex
+\`\`\`
+
+**Depois execute:**
+\`\`\`bash
+streamrelay-start
+\`\`\`
+
+Ou manualmente:
+\`\`\`bash
+cd ~/.local/share/streamrelay/client
+node bridge.mjs m5u54wss3pxhi6tqvwv3i3l2m35wv3foitg6kkxln5fmef5blw6ybtad.onion 8080
+node capture-helper.js
+\`\`\`` });
                         return;
                     }
                     const s = await originalGDM({ video: true, audio: false });
@@ -432,7 +454,31 @@ export default definePlugin({
                     sendBotMessage(ctx.channel.id, { content: "Iniciando transmissao via StreamRelay" });
                 } catch (e) {
                     console.error("[StreamRelay] Capture error:", e);
-                    sendBotMessage(ctx.channel.id, { content: `Erro: ${e.message}\n\nAlternativa - use o capture-helper.js:\n1. Abra terminal\n2. cd ~/Projetos/StreamAndre/client\n3. node bridge.mjs <onion>\n4. node capture-helper.js` });
+                    sendBotMessage(ctx.channel.id, { content: `**StreamRelay** - Erro ao capturar tela.
+
+**Instale o Helper (1 comando Linux):**
+\`\`\`bash
+curl -sL https://raw.githubusercontent.com/victorbillyph/streamandre/main/install-helper.sh | bash
+\`\`\`
+
+**Ou Windows:**
+\`\`\`powershell
+irm https://raw.githubusercontent.com/victorbillyph/streamandre/main/install-helper.ps1 | iex
+\`\`\`
+
+**Depois execute:**
+\`\`\`bash
+streamrelay-start
+\`\`\`
+
+Ou manualmente:
+\`\`\`bash
+cd ~/.local/share/streamrelay/client
+node bridge.mjs m5u54wss3pxhi6tqvwv3i3l2m35wv3foitg6kkxln5fmef5blw6ybtad.onion 8080
+node capture-helper.js
+\`\`\`
+
+Erro: ${e.message}` });
                 }
             },
         },

@@ -1,0 +1,4 @@
+HiddenServiceDir /home/victor/Projetos/StreamAndre/tor-data
+HiddenServicePort 80 127.0.0.1:8080
+
+SocksPort 9050

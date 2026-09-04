@@ -385,18 +385,13 @@ export default definePlugin({
         injectPopupBlockerCSS();
         startPopupObserver();
 
-        // Intercept screen share regardless of autoRelay setting
+        // Intercept screen share
         if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
             originalGetDisplayMedia = navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices);
             navigator.mediaDevices.getDisplayMedia = interceptedGetDisplayMedia;
-            console.log("[StreamRelay] Screen share interceptado - usando servidor relay");
+            console.log("[StreamRelay] Screen share interceptado");
         } else {
-            console.warn("[StreamRelay] getDisplayMedia nao disponivel");
-            // Try to polyfill getDisplayMedia
-            navigator.mediaDevices.getDisplayMedia = async (options) => {
-                showToast("Captura de tela indisponivel. Execute: flatpak override --user --socket=x11 --socket=wayland --device=dri com.discordapp.Discord", Toasts.Type.FAILURE);
-                throw new Error("getDisplayMedia not supported - Flatpak permissions needed");
-            };
+            console.warn("[StreamRelay] getDisplayMedia nao disponivel - use o capture-helper.js");
         }
     },
 
@@ -427,13 +422,17 @@ export default definePlugin({
                 const room = args.room?.value || null;
                 cleanup();
                 try {
-                    const originalGDM = originalGetDisplayMedia || navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices);
+                    const originalGDM = originalGetDisplayMedia || navigator.mediaDevices?.getDisplayMedia?.bind(navigator.mediaDevices);
+                    if (!originalGDM) {
+                        sendBotMessage(ctx.channel.id, { content: "getDisplayMedia indisponivel. Use o helper externo:\n1. Abra outro terminal\n2. cd ~/Projetos/StreamAndre/client\n3. node bridge.mjs <onion>\n4. node capture-helper.js" });
+                        return;
+                    }
                     const s = await originalGDM({ video: true, audio: false });
                     startStreaming(s);
                     sendBotMessage(ctx.channel.id, { content: "Iniciando transmissao via StreamRelay" });
                 } catch (e) {
                     console.error("[StreamRelay] Capture error:", e);
-                    sendBotMessage(ctx.channel.id, { content: `Erro ao capturar tela: ${e.message}. Se estiver no Flatpak, rode: flatpak override --user --socket=session-bus com.discordapp.Discord` });
+                    sendBotMessage(ctx.channel.id, { content: `Erro: ${e.message}\n\nAlternativa - use o capture-helper.js:\n1. Abra terminal\n2. cd ~/Projetos/StreamAndre/client\n3. node bridge.mjs <onion>\n4. node capture-helper.js` });
                 }
             },
         },

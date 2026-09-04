@@ -1,0 +1,11 @@
+{
+  "name": "stream-relay-server",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node relayServer.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.16.0"
+  }
+}

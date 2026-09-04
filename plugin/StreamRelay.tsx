@@ -326,13 +326,10 @@ function injectRedButtons() {
     const candidates = Array.from(document.querySelectorAll('button[aria-label], [role="button"][aria-label], button, [class*="actionButtons"] button, [class*="panels"] button')) as HTMLElement[];
     let injected = 0;
     for (const btn of candidates) {
-        const label = ((btn.getAttribute("aria-label") || btn.getAttribute("title") || btn.textContent || "")).toLowerCase();
-        const isShare = label.includes("share") || label.includes("compartilhar") || label.includes("go live") || label.includes("transmitir") || label.includes("screen") || label.includes("tela") || label.includes("video") || label.includes("live");
-        const hasScreenIcon = !!btn.querySelector('svg');
-        // heuristica: botao de acao de voz/call tem tamanho ~32-56px e fica em bottom panel
-        const rect = btn.getBoundingClientRect();
-        const isCallButton = rect.width >= 32 && rect.width <= 80 && rect.height >= 32 && rect.height <= 80;
-        if (!isShare && !(hasScreenIcon && isCallButton)) continue;
+        const label = ((btn.getAttribute("aria-label") || btn.getAttribute("title") || "")).toLowerCase();
+        // SOMENTE botao de transmissao/share
+        const isShare = label.includes("share") || label.includes("compartilhar") || label.includes("go live") || label.includes("transmitir") || label.includes("screen") || label.includes("tela");
+        if (!isShare) continue;
         if (btn.closest('[class*="channelTextArea"]') || btn.closest('[class*="chat"]')) continue;
         if ((btn.nextElementSibling as Element)?.classList?.contains("sr-red-share-btn")) continue;
         if (btn.classList.contains("sr-red-share-btn")) continue;

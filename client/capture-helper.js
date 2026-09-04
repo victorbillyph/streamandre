@@ -51,38 +51,27 @@ function connectMonitor(monitor, room) {
 }
 
 async function connectAll(baseRoom) {
-    monitors = getMonitors();
-    if (monitors.length <= 1) {
-        const ws = new WebSocket(`ws://127.0.0.1:${RELAY_PORT}`);
-        return new Promise((resolve, reject) => {
-            ws.on('open', () => ws.send(JSON.stringify({ type: 'host', room: baseRoom || undefined })));
-            ws.on('message', (data) => {
-                try {
-                    const msg = JSON.parse(data.toString());
-                    if (msg.type === 'room') {
-                        roomId = msg.id;
-                        console.log(`[Helper] Sala criada: ${roomId} (compartilhe este ID)`);
-                        console.log(`[Helper] Conectado direto ao relay :${RELAY_PORT}`);
-                        wsMap.set(roomId, ws);
-                        monitors = [""];
-                        resolve(roomId);
-                    }
-                } catch {}
-            });
-            ws.on('error', reject);
-            ws.on('close', () => console.log('[Helper] Desconectado'));
+    // uma unica sala para todos os monitores (imagem combinada via grim sem -o)
+    const ws = new WebSocket(`ws://127.0.0.1:${RELAY_PORT}`);
+    return new Promise((resolve, reject) => {
+        ws.on('open', () => ws.send(JSON.stringify({ type: 'host', room: baseRoom || undefined })));
+        ws.on('message', (data) => {
+            try {
+                const msg = JSON.parse(data.toString());
+                if (msg.type === 'room') {
+                    roomId = msg.id;
+                    console.log(`[Helper] Sala criada: ${roomId} (compartilhe este ID)`);
+                    console.log(`[Helper] Conectado direto ao relay :${RELAY_PORT} (todos os monitores em uma sala)`);
+                    wsMap.set(roomId, ws);
+                    monitors = getMonitors();
+                    if (monitors.length > 1) console.log(`[Helper] Monitores detectados: ${monitors.join(', ')} — transmitindo combinados`);
+                    resolve(roomId);
+                }
+            } catch {}
         });
-    } else {
-        console.log(`[Helper] Detectados ${monitors.length} monitores: ${monitors.join(', ')}`);
-        const base = await connectMonitor(null, baseRoom || `base-${Math.random().toString(36).slice(2, 6)}`);
-        roomId = base;
-        for (const mon of monitors) {
-            const r = `${base}-${mon}`;
-            await connectMonitor(mon, r);
-        }
-        console.log(`[Helper] Salas: ${Array.from(wsMap.keys()).join(', ')}`);
-        return base;
-    }
+        ws.on('error', reject);
+        ws.on('close', () => console.log('[Helper] Desconectado'));
+    });
 }
 
 function captureFrame(monitor) {
@@ -107,8 +96,7 @@ async function main() {
     setInterval(() => {
         for (const [room, s] of wsMap) {
             if (s.readyState !== WebSocket.OPEN) continue;
-            const mon = room === roomId ? null : room.replace(roomId + "-", "");
-            const pkt = captureFrame(monitors.length > 1 ? mon : null);
+            const pkt = captureFrame(null);
             if (pkt) {
                 s.send(pkt);
                 const c = (frameCounts.get(room) || 0) + 1;

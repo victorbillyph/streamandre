@@ -112,20 +112,19 @@ start_server() {
     fi
 }
 
-# Start bridge
+# Start bridge (para viewers se conectarem via Tor; host usa relay direto)
 start_bridge() {
-    echo -e "${YELLOW}Iniciando bridge Tor...${NC}"
+    echo -e "${YELLOW}Iniciando bridge Tor (para viewers)...${NC}"
     cd "$INSTALL_DIR/client"
     node bridge.mjs "$ONION" "$PORT" &
     BRIDGE_PID=$!
     sleep 2
-    
     if kill -0 $BRIDGE_PID 2>/dev/null; then
-        echo -e "${GREEN}[OK] Bridge conectado${NC}"
+        echo -e "${GREEN}[OK] Bridge pronto em 127.0.0.1:6789 -> $ONION:$PORT${NC}"
         return 0
     else
-        echo -e "${RED}[ERRO] Bridge falhou${NC}"
-        return 1
+        echo -e "${YELLOW}[AVISO] Bridge falhou, mas host continua (captura direta no relay)${NC}"
+        return 0
     fi
 }
 

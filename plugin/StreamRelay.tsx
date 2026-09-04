@@ -4,14 +4,15 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import { definePlugin } from "@utils/types";
+import definePlugin from "@utils/types";
 import { Devs } from "@utils/constants";
 import {
     ApplicationCommandInputType,
     ApplicationCommandOptionType,
+    findOption,
     sendBotMessage,
 } from "@api/Commands";
-import { showToast, Toasts } from "@api/Toast";
+import { showToast, Toasts } from "@webpack/common";
 
 const PLUGIN_KEY = "StreamRelay";
 
@@ -19,9 +20,122 @@ let ws = null;
 let stream = null;
 let sendInterval = null;
 let overlayEl = null;
+let popupObserver = null;
 
 const FRAME_RATE = 15;
 const QUALITY = 0.6;
+
+// CSS to hide Discord's screen share restriction popup
+const HIDE_POPUP_CSS = `
+/* Hide screen share restriction modal */
+[class*="modal"]:has([class*="screenShare"]),
+[class*="modal"]:has([class*="screenshare"]),
+[class*="modal"]:has([class*="sharing"]),
+[role="dialog"]:has([class*="screen"]),
+[class*="popup"]:has([class*="screen"]),
+[class*="notice"]:has([class*="screen"]),
+[class*=" restriction"],
+[class*="blocked"],
+[class*="unavailable"] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
+/* Hide various Discord modals that might block screen share */
+[aria-label="Screen Share"],
+[aria-label="Compartilhar tela"],
+[aria-label="Share Screen"] {
+    display: none !important;
+}
+`;
+
+let popupCSSInjected = false;
+
+function injectPopupBlockerCSS() {
+    if (popupCSSInjected) return;
+    const style = document.createElement("style");
+    style.id = "stream-relay-popup-blocker";
+    style.textContent = HIDE_POPUP_CSS;
+    document.head.appendChild(style);
+    popupCSSInjected = true;
+}
+
+function removePopupBlockerCSS() {
+    const style = document.getElementById("stream-relay-popup-blocker");
+    if (style) style.remove();
+    popupCSSInjected = false;
+}
+
+function startPopupObserver() {
+    if (popupObserver) return;
+
+    popupObserver = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+            for (const node of mutation.addedNodes) {
+                if (node.nodeType !== 1) continue;
+
+                // Check for popup/dialog elements
+                const isPopup =
+                    node.matches?.('[role="dialog"]') ||
+                    node.matches?.('[class*="modal"]') ||
+                    node.matches?.('[class*="popup"]') ||
+                    node.matches?.('[class*="notice"]');
+
+                if (isPopup) {
+                    const text = node.textContent?.toLowerCase() || "";
+                    const isScreenShareRelated =
+                        text.includes("screen share") ||
+                        text.includes("compartilhar tela") ||
+                        text.includes("share screen") ||
+                        text.includes("tela") ||
+                        text.includes("screen") ||
+                        text.includes("sharing") ||
+                        text.includes("not available") ||
+                        text.includes("indisponível") ||
+                        text.includes("restrição") ||
+                        text.includes("restriction") ||
+                        text.includes("blocked") ||
+                        text.includes("bloqueado") ||
+                        text.includes("unavailable") ||
+                        text.includes("não disponível");
+
+                    if (isScreenShareRelated) {
+                        console.log("[StreamRelay] Blocking popup:", text.substring(0, 100));
+                        node.remove();
+                    }
+                }
+
+                // Also check children
+                node.querySelectorAll?.('[role="dialog"], [class*="modal"], [class*="popup"]').forEach((el) => {
+                    const text = el.textContent?.toLowerCase() || "";
+                    if (
+                        text.includes("screen") ||
+                        text.includes("tela") ||
+                        text.includes("sharing") ||
+                        text.includes("compartilhar")
+                    ) {
+                        console.log("[StreamRelay] Blocking child popup:", text.substring(0, 100));
+                        el.remove();
+                    }
+                });
+            }
+        }
+    });
+
+    popupObserver.observe(document.body, {
+        childList: true,
+        subtree: true,
+    });
+}
+
+function stopPopupObserver() {
+    if (popupObserver) {
+        popupObserver.disconnect();
+        popupObserver = null;
+    }
+}
 
 function createOverlay(roomId) {
     removeOverlay();
@@ -147,14 +261,46 @@ function handleFrame(data) {
 }
 
 async function startHost(onionAddr, onionPort, room) {
+    // Ensure popup blocker is active
+    injectPopupBlockerCSS();
+    startPopupObserver();
+
+    // Small delay to allow CSS/observer to take effect
+    await new Promise((r) => setTimeout(r, 100));
+
     try {
+        // Try getDisplayMedia with constraints that might bypass restrictions
         stream = await navigator.mediaDevices.getDisplayMedia({
-            video: { cursor: "always" },
+            video: {
+                cursor: "always",
+                width: { ideal: 1920 },
+                height: { ideal: 1080 },
+                frameRate: { ideal: 30 },
+            },
             audio: false,
+            // @ts-ignore - experimental features
+            selfBrowserSurface: "include",
+            systemAudio: "include",
+            surfaceSwitching: "include",
         });
-    } catch {
-        showToast("Screen capture cancelled", Toasts.Type.FAILURE);
-        return;
+    } catch (err1) {
+        console.log("[StreamRelay] First attempt failed:", err1.message);
+
+        // Try with minimal constraints
+        try {
+            stream = await navigator.mediaDevices.getDisplayMedia({
+                video: true,
+                audio: false,
+            });
+        } catch (err2) {
+            console.log("[StreamRelay] Second attempt failed:", err2.message);
+
+            showToast(
+                "Screen capture blocked. Try running Discord with --enable-features=WebRTCPipeWireCapturer",
+                Toasts.Type.FAILURE
+            );
+            return;
+        }
     }
 
     showToast("Connecting to relay...", Toasts.Type.INFO);
@@ -328,8 +474,13 @@ export default definePlugin({
         },
     ],
 
-    start() {},
+    start() {
+        injectPopupBlockerCSS();
+        startPopupObserver();
+    },
     stop() {
         cleanup();
+        removePopupBlockerCSS();
+        stopPopupObserver();
     },
 });

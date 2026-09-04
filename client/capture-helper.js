@@ -2,10 +2,9 @@
 // StreamRelay Screen Capture Helper
 // Captura tela com grim e envia frames via WebSocket ao relay
 
-const { execSync, spawn } = require('child_process');
-const fs = require('fs');
-const WebSocket = require('ws');
-const path = require('path');
+import { execSync } from 'child_process';
+import fs from 'fs';
+import WebSocket from 'ws';
 
 const BRIDGE_PORT = process.env.BRIDGE_PORT || 6789;
 const FPS = parseInt(process.env.FPS || '10');

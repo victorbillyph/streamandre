@@ -94,33 +94,62 @@ function startPopupObserver() {
 }
 function stopPopupObserver() { if (popupObserver) { popupObserver.disconnect(); popupObserver = null; } }
 
+let overlayEls: HTMLDivElement[] = [];
+let activeViewWS: WebSocket[] = [];
+
 function createOverlay(roomId: string) {
-    removeOverlay();
-    overlayEl = document.createElement("div");
-    overlayEl.id = "stream-relay-overlay";
-    overlayEl.style.cssText = `position:fixed;top:20px;right:20px;z-index:99999;width:400px;height:300px;background:#000;border:2px solid #5865f2;border-radius:8px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.5);`;
-    const header = document.createElement("div");
-    header.style.cssText = `display:flex;justify-content:space-between;align-items:center;padding:4px 8px;background:#5865f2;color:white;font-size:12px;`;
-    header.innerHTML = `<span>StreamRelay - ${roomId}</span>`;
-    const stopBtn = document.createElement("button");
-    stopBtn.textContent = "Stop";
-    stopBtn.style.cssText = "background:#ed4245;border:none;color:white;padding:2px 8px;border-radius:4px;cursor:pointer;font-size:11px;";
-    stopBtn.onclick = () => { if (ws) ws.send(JSON.stringify({ type: "bye" })); cleanup(); };
-    header.appendChild(stopBtn);
-    overlayEl.appendChild(header);
-    const canvas = document.createElement("canvas");
-    canvas.id = "stream-relay-canvas";
-    canvas.style.cssText = "width:100%;height:calc(100% - 24px);display:block;";
-    overlayEl.appendChild(canvas);
-    document.body.appendChild(overlayEl);
+    // compat: cria overlay unico
+    createMonitorOverlays([roomId]);
 }
-function removeOverlay() { const el = document.getElementById("stream-relay-overlay"); if (el) el.remove(); overlayEl = null; }
+function createMonitorOverlays(roomIds: string[]) {
+    removeOverlay();
+    const container = document.createElement("div");
+    container.id = "stream-relay-overlay";
+    container.style.cssText = `position:fixed;top:20px;right:20px;z-index:99999;display:flex;flex-direction:column;gap:8px;max-height:90vh;overflow:auto;`;
+    overlayEl = container as any;
+    overlayEls = [];
+    roomIds.forEach((rid, idx) => {
+        const wrap = document.createElement("div");
+        wrap.style.cssText = `width:400px;height:300px;background:#000;border:2px solid #5865f2;border-radius:8px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.5);display:flex;flex-direction:column;`;
+        const header = document.createElement("div");
+        header.style.cssText = `display:flex;justify-content:space-between;align-items:center;padding:4px 8px;background:#5865f2;color:white;font-size:12px;`;
+        const label = roomIds.length > 1 ? `Monitor ${idx + 1} - ${rid}` : `StreamRelay - ${rid}`;
+        header.innerHTML = `<span>${label}</span>`;
+        const btns = document.createElement("div"); btns.style.cssText = `display:flex;gap:4px;`;
+        const fsBtn = document.createElement("button"); fsBtn.textContent = "⛶";
+        fsBtn.title = "Fullscreen"; fsBtn.style.cssText = "background:#2b2d31;border:none;color:white;padding:2px 6px;border-radius:4px;cursor:pointer;font-size:11px;";
+        fsBtn.onclick = () => { const cv = wrap.querySelector("canvas") as HTMLCanvasElement; if (cv) cv.requestFullscreen?.(); };
+        const stopBtn = document.createElement("button"); stopBtn.textContent = "Stop";
+        stopBtn.style.cssText = "background:#ed4245;border:none;color:white;padding:2px 8px;border-radius:4px;cursor:pointer;font-size:11px;";
+        stopBtn.onclick = () => cleanup();
+        btns.appendChild(fsBtn); btns.appendChild(stopBtn); header.appendChild(btns);
+        wrap.appendChild(header);
+        const canvas = document.createElement("canvas");
+        canvas.id = `stream-relay-canvas-${idx}`;
+        canvas.dataset.room = rid;
+        canvas.style.cssText = "width:100%;flex:1;display:block;background:#000;cursor:pointer;";
+        canvas.onclick = () => canvas.requestFullscreen?.();
+        wrap.appendChild(canvas);
+        container.appendChild(wrap);
+        overlayEls.push(wrap);
+    });
+    document.body.appendChild(container);
+}
+function removeOverlay() {
+    const el = document.getElementById("stream-relay-overlay");
+    if (el) el.remove();
+    overlayEl = null; overlayEls = [];
+    activeViewWS.forEach(s => { try { s.close(); } catch {} });
+    activeViewWS = [];
+}
 function removePickerModal() { if (pickerModal) { pickerModal.remove(); pickerModal = null; } }
 function cleanup() {
     if (sendInterval) clearInterval(sendInterval);
     sendInterval = null;
     if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
     if (ws) { try { ws.close(); } catch {} ws = null; }
+    activeViewWS.forEach(s => { try { s.close(); } catch {} });
+    activeViewWS = [];
     removeOverlay(); removePickerModal();
 }
 function tryConnect(url: string, mode: string, room?: string | null): Promise<string> {
@@ -151,18 +180,22 @@ function connectWS(_onionAddr: string, _onionPort: number, mode: string, room?: 
         })
     );
 }
-function handleFrame(data: ArrayBuffer) {
-    if (!overlayEl) return;
-    const canvas = document.getElementById("stream-relay-canvas") as HTMLCanvasElement;
-    if (!canvas) return;
+function handleFrame(data: ArrayBuffer, targetRoom?: string) {
+    let canvas: HTMLCanvasElement | null = null;
+    if (targetRoom) {
+        canvas = document.querySelector(`canvas[data-room="${targetRoom}"]`) as HTMLCanvasElement;
+    }
+    if (!canvas) canvas = document.getElementById("stream-relay-canvas") as HTMLCanvasElement;
+    if (!canvas) {
+        // multi: usa primeiro canvas livre
+        canvas = document.querySelector(`[id^="stream-relay-canvas-"]`) as HTMLCanvasElement;
+        if (!canvas) return;
+    }
     const ctx = canvas.getContext("2d")!;
     let buf = data instanceof ArrayBuffer ? new Uint8Array(data) : new Uint8Array(data as any);
-    // strip SRF1 header (13 bytes) if present
-    if (buf.length > 13 && buf[0] === 0x53 && buf[1] === 0x52 && buf[2] === 0x46 && buf[3] === 0x31) {
-        buf = buf.slice(13);
-    }
+    if (buf.length > 13 && buf[0] === 0x53 && buf[1] === 0x52 && buf[2] === 0x46 && buf[3] === 0x31) buf = buf.slice(13);
     const blob = new Blob([buf], { type: "image/jpeg" });
-    createImageBitmap(blob).then(bmp => { canvas.width = bmp.width; canvas.height = bmp.height; ctx.drawImage(bmp, 0, 0); }).catch(() => {});
+    createImageBitmap(blob).then(bmp => { canvas!.width = bmp.width; canvas!.height = bmp.height; ctx.drawImage(bmp, 0, 0); }).catch(() => {});
 }
 function checkHelperStatus(): Promise<boolean> {
     const tryUrl = (url: string) => new Promise<boolean>(res => {
@@ -208,15 +241,104 @@ function startStreaming(mediaStream: MediaStream) {
         videoTrack.onended = () => { cleanup(); showToast("Transmissao encerrada", Toasts.Type.FAILURE); };
     }).catch(err => { cleanup(); showToast(`Erro: ${err.message}`, Toasts.Type.FAILURE); });
 }
-function startView(room: string) {
-    const onionAddr = settings.store.onionAddress;
-    const onionPort = settings.store.onionPort;
-    showToast("Conectando ao relay...", Toasts.Type.INFO);
-    connectWS(onionAddr, onionPort, "view", room).then(() => {
-        createOverlay(room);
-        showToast("Assistindo transmissao", Toasts.Type.SUCCESS);
-    }).catch(err => showToast(`Erro: ${err.message}`, Toasts.Type.FAILURE));
+async function queryRooms(): Promise<string[]> {
+    return new Promise(res => {
+        const s = new WebSocket("ws://127.0.0.1:8080");
+        s.binaryType = "arraybuffer";
+        const t = setTimeout(() => { try { s.close(); } catch {} res([]); }, 1500);
+        s.onopen = () => s.send(JSON.stringify({ type: "query" }));
+        s.onmessage = (e: any) => {
+            try {
+                const msg = JSON.parse(e.data);
+                if (msg.type === "rooms") { clearTimeout(t); res(msg.rooms.map((r: any) => r.id)); s.close(); }
+            } catch {}
+        };
+        s.onerror = () => { clearTimeout(t); res([]); };
+    });
 }
+function startView(room: string) {
+    showToast("Conectando ao relay...", Toasts.Type.INFO);
+    const base = room.trim();
+    queryRooms().then(allRooms => {
+        const related = allRooms.filter(r => r === base || r.startsWith(base + "-"));
+        const toWatch = related.length ? related : [base];
+        createMonitorOverlays(toWatch);
+        showToast(`Assistindo ${toWatch.length} tela(s) — clique no canvas para fullscreen`, Toasts.Type.SUCCESS);
+        toWatch.forEach(r => {
+            const url = `ws://127.0.0.1:8080`;
+            const s = new WebSocket(url);
+            s.binaryType = "arraybuffer";
+            activeViewWS.push(s);
+            s.onopen = () => s.send(JSON.stringify({ type: "view", room: r }));
+            s.onmessage = (e: any) => {
+                if (typeof e.data === "string") {
+                    try {
+                        const m = JSON.parse(e.data);
+                        if (m.type === "gone") { showToast(`Sala ${r} encerrada`, Toasts.Type.FAILURE); }
+                    } catch {}
+                } else handleFrame(e.data, r);
+            };
+            s.onerror = () => {
+                // fallback Tor bridge
+                const b = new WebSocket(`ws://127.0.0.1:6789`);
+                b.binaryType = "arraybuffer";
+                activeViewWS.push(b);
+                b.onopen = () => b.send(JSON.stringify({ type: "view", room: r }));
+                b.onmessage = (e: any) => { if (typeof e.data !== "string") handleFrame(e.data, r); };
+            };
+        });
+    }).catch(() => {
+        // sem query, tenta direto
+        createMonitorOverlays([base]);
+        connectWS(settings.store.onionAddress, settings.store.onionPort, "view", base).catch(err => showToast(`Erro: ${err.message}`, Toasts.Type.FAILURE));
+    });
+}
+
+let seenRooms = new Set<string>();
+let pollInterval: any = null;
+
+function HelperCodeModal({ modalProps, close, roomId }: { modalProps: any; close: () => void; roomId: string; }) {
+    const [copied, setCopied] = useState(false);
+    const copy = async () => {
+        try { await navigator.clipboard.writeText(roomId); setCopied(true); showToast("Codigo copiado!", Toasts.Type.SUCCESS); setTimeout(() => setCopied(false), 2000); }
+        catch { showToast("Falha ao copiar", Toasts.Type.FAILURE); }
+    };
+    return (
+        <Modal {...modalProps} size="sm" title="StreamRelay — Helper conectado">
+            <div style={{ display: "flex", flexDirection: "column", gap: 16, padding: "8px 0", alignItems: "center" }}>
+                <Text variant="text-sm/normal" style={{ color: "var(--text-muted)", textAlign: "center" }}>Seu helper criou uma sala. Compartilhe o codigo:</Text>
+                <div style={{ background: "var(--background-secondary)", borderRadius: 8, padding: 16, fontFamily: "monospace", fontSize: 28, fontWeight: 700, letterSpacing: 2, textAlign: "center", width: "100%" }}>{roomId}</div>
+                <Flex style={{ gap: 8 }}>
+                    <Button onClick={copy}>{copied ? "Copiado!" : "Copiar codigo"}</Button>
+                    <Button color={Button.Colors.PRIMARY} look={Button.Looks.OUTLINED} onClick={close}>Fechar</Button>
+                </Flex>
+                <Text variant="text-xs/normal" style={{ color: "var(--text-muted)", textAlign: "center" }}>Viewers: /streamrelay → Assistir → cole o codigo. Precisam do helper (streamrelay-start).</Text>
+            </div>
+        </Modal>
+    );
+}
+function openHelperCodeModal(roomId: string) {
+    const key = openModal(props => <HelperCodeModal modalProps={props} close={() => closeModal(key)} roomId={roomId} />);
+}
+function startPollingHelperRooms() {
+    if (pollInterval) return;
+    pollInterval = setInterval(async () => {
+        try {
+            const rooms = await queryRooms();
+            for (const r of rooms) {
+                const base = r.split("-")[0];
+                if (!seenRooms.has(base)) {
+                    seenRooms.add(base);
+                    // so mostra para salas criadas ha pouco (helper acabou de conectar)
+                    openHelperCodeModal(base);
+                }
+            }
+            // marca salas antigas como vistas para nao repetir
+            rooms.forEach(r => seenRooms.add(r.split("-")[0]));
+        } catch {}
+    }, 4000);
+}
+function stopPollingHelperRooms() { if (pollInterval) { clearInterval(pollInterval); pollInterval = null; } }
 
 // ---------- Modal ----------
 function StatusModal({ modalProps, close }: { modalProps: any; close: () => void; }) {
@@ -291,9 +413,12 @@ export default definePlugin({
             originalGetDisplayMedia = navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices);
             navigator.mediaDevices.getDisplayMedia = interceptedGetDisplayMedia;
         }
+        startPollingHelperRooms();
+        // seed seenRooms para nao spammar salas antigas
+        queryRooms().then(rooms => rooms.forEach(r => seenRooms.add(r.split("-")[0]))).catch(() => {});
     },
     stop() {
-        cleanup(); removePopupBlockerCSS(); stopPopupObserver();
+        cleanup(); removePopupBlockerCSS(); stopPopupObserver(); stopPollingHelperRooms();
         if (originalGetDisplayMedia) { navigator.mediaDevices.getDisplayMedia = originalGetDisplayMedia; originalGetDisplayMedia = null; }
     },
     commands: [

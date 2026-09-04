@@ -9,16 +9,16 @@ const FPS = parseInt(process.env.FPS || '10');
 const INTERVAL_MS = 1000 / FPS;
 
 let roomId = null;
-let monitors: string[] = [];
-let wsMap = new Map<string, WebSocket>();
-let frameCounts = new Map<string, number>();
+let monitors = [];
+let wsMap = new Map();
+let frameCounts = new Map();
 
-function getMonitors(): string[] {
+function getMonitors() {
     try {
         const out = execSync(`hyprctl monitors -j 2>/dev/null || wlr-randr --json 2>/dev/null || echo '[]'`, { encoding: 'utf8', timeout: 2000 });
         const j = JSON.parse(out);
         if (Array.isArray(j) && j.length > 0) {
-            const names = j.map((m: any) => m.name || m.model || "").filter(Boolean);
+            const names = j.map(m => m.name || m.model || "").filter(Boolean);
             if (names.length) return names;
         }
     } catch {}
@@ -30,8 +30,8 @@ function getMonitors(): string[] {
     return [];
 }
 
-function connectMonitor(monitor: string | null, room: string) {
-    return new Promise<string>((resolve, reject) => {
+function connectMonitor(monitor, room) {
+    return new Promise((resolve, reject) => {
         const s = new WebSocket(`ws://127.0.0.1:${RELAY_PORT}`);
         s.on('open', () => s.send(JSON.stringify({ type: 'host', room })));
         s.on('message', (data) => {
@@ -45,12 +45,12 @@ function connectMonitor(monitor: string | null, room: string) {
                 }
             } catch {}
         });
-        s.on('error', (e) => { console.error(`[Helper] Erro WS ${room}:`, (e as Error).message); reject(e); });
+        s.on('error', (e) => { console.error(`[Helper] Erro WS ${room}:`, e.message); reject(e); });
         s.on('close', () => console.log(`[Helper] Desconectado ${room}`));
     });
 }
 
-async function connectAll(baseRoom: string | null): Promise<string> {
+async function connectAll(baseRoom) {
     monitors = getMonitors();
     if (monitors.length <= 1) {
         const ws = new WebSocket(`ws://127.0.0.1:${RELAY_PORT}`);
@@ -74,7 +74,6 @@ async function connectAll(baseRoom: string | null): Promise<string> {
         });
     } else {
         console.log(`[Helper] Detectados ${monitors.length} monitores: ${monitors.join(', ')}`);
-        // cria sala base primeiro
         const base = await connectMonitor(null, baseRoom || `base-${Math.random().toString(36).slice(2, 6)}`);
         roomId = base;
         for (const mon of monitors) {
@@ -86,16 +85,16 @@ async function connectAll(baseRoom: string | null): Promise<string> {
     }
 }
 
-function captureFrame(monitor: string | null) {
+function captureFrame(monitor) {
     try {
         const target = monitor ? `-o ${monitor}` : "";
-        const buf = execSync(`grim ${target} -t jpeg -q 60 - 2>/dev/null`, { timeout: 3000, maxBuffer: 10*1024*1024 }) as Buffer;
+        const buf = execSync(`grim ${target} -t jpeg -q 60 - 2>/dev/null`, { timeout: 3000, maxBuffer: 10*1024*1024 });
         if (!buf || buf.length < 100) return null;
         const header = Buffer.alloc(13);
         header.write('SRF1', 0); header.writeUInt8(0, 4);
         header.writeUInt16LE(1920, 5); header.writeUInt16LE(1080, 7); header.writeUInt32LE(Date.now() % 4294967296, 9);
         return Buffer.concat([header, buf]);
-    } catch (e: any) {
+    } catch (e) {
         return null;
     }
 }

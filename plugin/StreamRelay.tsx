@@ -25,30 +25,35 @@ let popupObserver = null;
 const FRAME_RATE = 15;
 const QUALITY = 0.6;
 
-// CSS to hide Discord's screen share restriction popup
+// CSS to hide Discord's screen share restriction popup ONLY
 const HIDE_POPUP_CSS = `
-/* Hide screen share restriction modal */
-[class*="modal"]:has([class*="screenShare"]),
-[class*="modal"]:has([class*="screenshare"]),
-[class*="modal"]:has([class*="sharing"]),
-[role="dialog"]:has([class*="screen"]),
-[class*="popup"]:has([class*="screen"]),
-[class*="notice"]:has([class*="screen"]),
-[class*=" restriction"],
-[class*="blocked"],
-[class*="unavailable"] {
-    display: none !important;
-    visibility: hidden !important;
-    opacity: 0 !important;
-    pointer-events: none !important;
-}
+/* Hide ONLY the restriction/error popup, NOT the screen picker */
+/* These are typically small modal dialogs with restriction messages */
 
-/* Hide various Discord modals that might block screen share */
-[aria-label="Screen Share"],
-[aria-label="Compartilhar tela"],
-[aria-label="Share Screen"] {
-    display: none !important;
-}
+/* Block restriction modals by their specific text content */
+.modal-1UGsnR:has(.title-18g6qS),
+.modal-1UGsnR:has([class*="error"]),
+.layer-1Yrb0d:has([class*="error"]):not(:has([class*="picker"])),
+.layer-1Yrb0d:has([class*="restriction"]),
+.layer-1Yrb0d:has([class*="blocked"]),
+
+/* Hide popups with restriction text */
+[class*="modal"]:has([class*="error"]):not(:has([class*="picker"])),
+[class*="modal"]:has([class*="not available"]):not(:has([class*="picker"])),
+[class*="modal"]:has([class*="indisponível"]):not(:has([class*="picker"])),
+
+/* Hide the specific Discord restriction overlay */
+.notice-2z3lgq,
+.notice-3zWtkb,
+[class*="notice"]:has([class*="error"]),
+[class*="notice"]:has([class*="restricted"]),
+
+/* Hide warning/error banners that block interaction */
+[class*="banner"]:has([class*="error"]),
+[class*="banner"]:has([class*="warning"]),
+
+/* DO NOT HIDE: screen picker, source selector, display surface picker */
+/* These have specific classes that we preserve */
 `;
 
 let popupCSSInjected = false;
@@ -79,47 +84,43 @@ function startPopupObserver() {
                 // Check for popup/dialog elements
                 const isPopup =
                     node.matches?.('[role="dialog"]') ||
-                    node.matches?.('[class*="modal"]') ||
-                    node.matches?.('[class*="popup"]') ||
-                    node.matches?.('[class*="notice"]');
+                    node.matches?.('[class*="modal"]');
 
                 if (isPopup) {
                     const text = node.textContent?.toLowerCase() || "";
-                    const isScreenShareRelated =
-                        text.includes("screen share") ||
-                        text.includes("compartilhar tela") ||
-                        text.includes("share screen") ||
-                        text.includes("tela") ||
-                        text.includes("screen") ||
-                        text.includes("sharing") ||
-                        text.includes("not available") ||
-                        text.includes("indisponível") ||
+
+                    // Check if this is a RESTRICTION popup (not the screen picker)
+                    const isRestrictionPopup =
+                        (text.includes("not available") && !text.includes("picker")) ||
+                        (text.includes("indisponível") && !text.includes("seletor")) ||
                         text.includes("restrição") ||
                         text.includes("restriction") ||
-                        text.includes("blocked") ||
+                        text.includes("blocked by your") ||
                         text.includes("bloqueado") ||
-                        text.includes("unavailable") ||
-                        text.includes("não disponível");
+                        text.includes("não é possível") ||
+                        text.includes("this feature is not") ||
+                        text.includes("esta funcionalidade não") ||
+                        text.includes("your region") ||
+                        text.includes("sua região") ||
+                        (text.includes("screen") && text.includes("unavailable") && !text.includes("source"));
 
-                    if (isScreenShareRelated) {
-                        console.log("[StreamRelay] Blocking popup:", text.substring(0, 100));
+                    // Check if this is the SCREEN PICKER (should NOT be removed)
+                    const isScreenPicker =
+                        node.querySelector?.('[class*="picker"]') ||
+                        node.querySelector?.('[class*="selector"]') ||
+                        node.querySelector?.('[class*="source"]') ||
+                        node.querySelector?.('[class*="display"]') ||
+                        text.includes("choose") ||
+                        text.includes("escolher") ||
+                        text.includes("select a") ||
+                        text.includes("selecione") ||
+                        text.includes("share") && text.includes("screen");
+
+                    if (isRestrictionPopup && !isScreenPicker) {
+                        console.log("[StreamRelay] Removing restriction popup:", text.substring(0, 150));
                         node.remove();
                     }
                 }
-
-                // Also check children
-                node.querySelectorAll?.('[role="dialog"], [class*="modal"], [class*="popup"]').forEach((el) => {
-                    const text = el.textContent?.toLowerCase() || "";
-                    if (
-                        text.includes("screen") ||
-                        text.includes("tela") ||
-                        text.includes("sharing") ||
-                        text.includes("compartilhar")
-                    ) {
-                        console.log("[StreamRelay] Blocking child popup:", text.substring(0, 100));
-                        el.remove();
-                    }
-                });
             }
         }
     });

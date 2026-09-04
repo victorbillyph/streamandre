@@ -85,14 +85,29 @@ if ($missing.Count -gt 0) {
 
 Write-Host ""
 Write-Host "Clonando repositorio..." -ForegroundColor Cyan
-# usa git portatil se instalou
-if (Test-Path "$INSTALL_DIR\tools\git\cmd\git.exe") { $env:Path = "$INSTALL_DIR\tools\git\cmd;" + $env:Path }
+if (Test-Path "$INSTALL_DIR\tools\git\cmd\git.exe") { $env:Path = "$INSTALL_DIR\tools\git\cmd;$INSTALL_DIR\tools\git\mingw64\bin;" + $env:Path }
 if (Test-Path "$INSTALL_DIR\tools\node-v20.18.0-win-x64\node.exe") { $env:Path = "$INSTALL_DIR\tools\node-v20.18.0-win-x64;" + $env:Path }
-if (Test-Path "$INSTALL_DIR\.git") {
-    Set-Location $INSTALL_DIR
-    git pull
-} else {
-    git clone $REPO_URL $INSTALL_DIR
+$gitExe = (Get-Command git -ErrorAction SilentlyContinue).Source; if (-not $gitExe -and (Test-Path "$INSTALL_DIR\tools\git\cmd\git.exe")) { $gitExe = "$INSTALL_DIR\tools\git\cmd\git.exe" }; if (-not $gitExe) { $gitExe = "git" }
+try {
+    if (Test-Path "$INSTALL_DIR\.git") {
+        Push-Location $INSTALL_DIR; & $gitExe pull --ff-only; Pop-Location
+    } else {
+        if (Test-Path $INSTALL_DIR) {
+            $tmpClone = Join-Path $env:TEMP ("streamrelay-" + [Guid]::NewGuid().ToString().Substring(0,8))
+            & $gitExe clone --depth 1 $REPO_URL $tmpClone
+            Copy-Item -Path "$tmpClone\*" -Destination $INSTALL_DIR -Recurse -Force
+            Copy-Item -Path "$tmpClone\.*" -Destination $INSTALL_DIR -Force -ErrorAction SilentlyContinue
+            Remove-Item -Recurse -Force $tmpClone
+        } else {
+            & $gitExe clone --depth 1 $REPO_URL $INSTALL_DIR
+        }
+    }
+} catch {
+    Write-Host "ERRO ao clonar: $_" -ForegroundColor Red
+    Write-Host "Tente manual: git clone $REPO_URL $INSTALL_DIR" -ForegroundColor Yellow
+    Write-Host "Pressione qualquer tecla..." -ForegroundColor Yellow
+    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+    throw
 }
 
 Write-Host ""

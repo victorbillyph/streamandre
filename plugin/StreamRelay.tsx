@@ -212,12 +212,21 @@ function StatusModal({ modalProps, close }: { modalProps: any; close: () => void
 
     const doScreen = async (surface: "monitor" | "window") => {
         close();
+        const gdm = originalGetDisplayMedia || navigator.mediaDevices?.getDisplayMedia?.bind(navigator.mediaDevices);
+        if (!gdm) {
+            showToast("Captura via Discord bloqueada no Flatpak. Use o helper: streamrelay-start", Toasts.Type.FAILURE);
+            return;
+        }
         try {
-            const gdm = originalGetDisplayMedia || navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices);
             const s = await gdm({ video: { displaySurface: surface } as any, audio: false });
             startStreaming(s);
         } catch (e: any) {
-            showToast(e.message?.includes("Helper") ? e.message : `Erro captura: ${e.message}`, Toasts.Type.FAILURE);
+            const msg = e.message || "";
+            if (msg.includes("Not Supported") || msg.includes("not supported") || msg.includes("Permission denied")) {
+                showToast("Flatpak bloqueou captura. Use o helper externo: streamrelay-start (captura via grim/PipeWire)", Toasts.Type.FAILURE);
+            } else {
+                showToast(`Erro captura: ${msg}`, Toasts.Type.FAILURE);
+            }
         }
     };
 

@@ -48,14 +48,13 @@ if [ $MISSING -eq 1 ]; then
 fi
 
 echo ""
-echo "Clonando repositorio..."
+echo "Clonando repositorio em /tmp..."
+TMP_DIR=$(mktemp -d /tmp/streamrelay-XXXXXX)
+git clone --depth 1 "$REPO_URL" "$TMP_DIR"
 mkdir -p "$INSTALL_DIR"
-if [ -d "$INSTALL_DIR/.git" ]; then
-    cd "$INSTALL_DIR"
-    git pull
-else
-    git clone "$REPO_URL" "$INSTALL_DIR"
-fi
+cp -r "$TMP_DIR"/* "$INSTALL_DIR"/
+cp -r "$TMP_DIR"/.* "$INSTALL_DIR"/ 2>/dev/null || true
+rm -rf "$TMP_DIR"
 
 echo ""
 echo "Instalando dependencias Node.js..."

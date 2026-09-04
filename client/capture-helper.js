@@ -76,8 +76,21 @@ async function connectAll(baseRoom) {
 
 function captureFrame(monitor) {
     try {
-        const target = monitor ? `-o ${monitor}` : "";
-        const buf = execSync(`grim ${target} -t jpeg -q 60 - 2>/dev/null`, { timeout: 3000, maxBuffer: 10*1024*1024 });
+        let buf;
+        if (process.platform === "win32") {
+            // Windows: ffmpeg gdigrab (precisa ffmpeg no PATH)
+            try {
+                buf = execSync(`ffmpeg -f gdigrab -framerate 10 -i desktop -vframes 1 -q:v 5 -f mjpeg pipe:1 2>nul`, { timeout: 3000, maxBuffer: 10*1024*1024 });
+            } catch {
+                // fallback PowerShell
+                const ps = `powershell -NoProfile -Command "$bmp = [System.Drawing.Graphics]::FromHwnd([IntPtr]::Zero); $w=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Width; $h=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height; $b=New-Object System.Drawing.Bitmap($w,$h); $g=[System.Drawing.Graphics]::FromImage($b); $g.CopyFromScreen(0,0,0,0,$b.Size); $ms=New-Object IO.MemoryStream; $b.Save($ms,[System.Drawing.Imaging.ImageFormat]::Jpeg); [Convert]::ToBase64String($ms.ToArray())"`;
+                const b64 = execSync(ps, { encoding: 'utf8', timeout: 3000, maxBuffer: 10*1024*1024 }).trim();
+                buf = Buffer.from(b64, 'base64');
+            }
+        } else {
+            const target = monitor ? `-o ${monitor}` : "";
+            buf = execSync(`grim ${target} -t jpeg -q 60 - 2>/dev/null`, { timeout: 3000, maxBuffer: 10*1024*1024 });
+        }
         if (!buf || buf.length < 100) return null;
         const header = Buffer.alloc(13);
         header.write('SRF1', 0); header.writeUInt8(0, 4);

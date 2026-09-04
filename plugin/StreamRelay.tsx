@@ -296,6 +296,69 @@ function startView(room: string) {
 
 let seenRooms = new Set<string>();
 let pollInterval: any = null;
+let redButtonObserver: MutationObserver | null = null;
+let redButtonStyleInjected = false;
+
+const RED_BTN_CSS = `
+.sr-red-share-btn {
+    background: #ed4245 !important;
+    color: white !important;
+}
+.sr-red-share-btn:hover { background: #c93a3e !important; }
+.sr-red-share-btn svg { color: white !important; }
+`;
+
+function ensureRedButtonStyle() {
+    if (redButtonStyleInjected) return;
+    const s = document.createElement("style");
+    s.id = "sr-red-btn-style";
+    s.textContent = RED_BTN_CSS;
+    document.head.appendChild(s);
+    redButtonStyleInjected = true;
+}
+function removeRedButtonStyle() {
+    document.getElementById("sr-red-btn-style")?.remove();
+    redButtonStyleInjected = false;
+}
+function injectRedButtons() {
+    ensureRedButtonStyle();
+    // procura botao de Go Live / Share Screen no painel de voz
+    const candidates = Array.from(document.querySelectorAll('button[aria-label]')) as HTMLButtonElement[];
+    for (const btn of candidates) {
+        const label = (btn.getAttribute("aria-label") || "").toLowerCase();
+        const isShare = label.includes("share") || label.includes("compartilhar") || label.includes("go live") || label.includes("transmitir") || label.includes("screen") || label.includes("video");
+        // tambem checa se tem icone de screen
+        const hasScreenIcon = !!btn.querySelector('svg path[d*="M4 4"]') || !!btn.querySelector('svg path[d*="screen"]');
+        if (!isShare && !hasScreenIcon) continue;
+        // ja injetado?
+        if (btn.nextElementSibling?.classList.contains("sr-red-share-btn")) continue;
+        // evita injetar em botoes pequenos do chat
+        if (btn.closest('[class*="channelTextArea"]')) continue;
+
+        const clone = btn.cloneNode(true) as HTMLButtonElement;
+        clone.classList.add("sr-red-share-btn");
+        clone.setAttribute("aria-label", "StreamRelay (servidor privado)");
+        clone.title = "StreamRelay — abrir painel";
+        // remove listeners clonados e adiciona o nosso
+        const newBtn = clone.cloneNode(true) as HTMLButtonElement;
+        newBtn.onclick = (e) => { e.preventDefault(); e.stopPropagation(); openStatusModal(); };
+        newBtn.style.background = "#ed4245";
+        // copia tamanho
+        newBtn.style.marginLeft = "8px";
+        btn.insertAdjacentElement("afterend", newBtn);
+    }
+}
+function startRedButtonObserver() {
+    if (redButtonObserver) return;
+    injectRedButtons();
+    redButtonObserver = new MutationObserver(() => injectRedButtons());
+    redButtonObserver.observe(document.body, { childList: true, subtree: true });
+}
+function stopRedButtonObserver() {
+    if (redButtonObserver) { redButtonObserver.disconnect(); redButtonObserver = null; }
+    document.querySelectorAll(".sr-red-share-btn").forEach(el => el.remove());
+    removeRedButtonStyle();
+}
 
 function HelperCodeModal({ modalProps, close, roomId }: { modalProps: any; close: () => void; roomId: string; }) {
     const [copied, setCopied] = useState(false);
@@ -408,17 +471,16 @@ export default definePlugin({
     authors: [Devs.Ven],
     settings,
     start() {
-        injectPopupBlockerCSS(); startPopupObserver();
+        injectPopupBlockerCSS(); startPopupObserver(); startRedButtonObserver();
         if (navigator.mediaDevices?.getDisplayMedia) {
             originalGetDisplayMedia = navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices);
             navigator.mediaDevices.getDisplayMedia = interceptedGetDisplayMedia;
         }
         startPollingHelperRooms();
-        // seed seenRooms para nao spammar salas antigas
         queryRooms().then(rooms => rooms.forEach(r => seenRooms.add(r.split("-")[0]))).catch(() => {});
     },
     stop() {
-        cleanup(); removePopupBlockerCSS(); stopPopupObserver(); stopPollingHelperRooms();
+        cleanup(); removePopupBlockerCSS(); stopPopupObserver(); stopPollingHelperRooms(); stopRedButtonObserver();
         if (originalGetDisplayMedia) { navigator.mediaDevices.getDisplayMedia = originalGetDisplayMedia; originalGetDisplayMedia = null; }
     },
     commands: [

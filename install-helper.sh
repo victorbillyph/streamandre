@@ -158,13 +158,25 @@ STARTEOF
 
 chmod +x "$HOME/.local/bin/streamrelay-start"
 
+# Link network helper
+mkdir -p "$HOME/.local/bin"
+cp "$INSTALL_DIR/streamrelay-network.sh" "$HOME/.local/bin/streamrelay-network" 2>/dev/null || cp "$INSTALL_DIR/client/network-helper.js" "$HOME/.local/bin/" 2>/dev/null
+chmod +x "$HOME/.local/bin/streamrelay-network" 2>/dev/null
+
 echo ""
 echo "=== Instalacao concluida! ==="
 echo ""
-echo "Para usar:"
+echo "Para usar (modo centralizado):"
 echo "  streamrelay-start"
+echo ""
+echo "Para modo descentralizado (cada um com seu onion):"
+echo "  streamrelay-network host              # iniciar transmissao"
+echo "  streamrelay-network view <onion>      # assistir"
+echo "  streamrelay-network addpeer <onion>   # adicionar amigo"
+echo "  streamrelay-network listpeers         # listar amigos"
 echo ""
 echo "Ou manualmente:"
 echo "  cd $INSTALL_DIR/client"
 echo "  node bridge.mjs <onion> <porta>"
 echo "  node capture-helper.js"
+echo "  node network-helper.js host|view|addpeer|listpeers"

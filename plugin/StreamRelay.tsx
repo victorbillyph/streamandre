@@ -360,7 +360,8 @@ function interceptedGetDisplayMedia(options) {
     if (originalGetDisplayMedia) {
         return originalGetDisplayMedia.call(navigator.mediaDevices, options);
     }
-    return navigator.mediaDevices.getDisplayMedia(options);
+    // Fallback if no original
+    throw new Error("getDisplayMedia not available");
 }
 
 function startView(onionAddr, onionPort, room) {
@@ -384,14 +385,18 @@ export default definePlugin({
         injectPopupBlockerCSS();
         startPopupObserver();
 
-        if (settings.store.autoRelay) {
-            if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
-                originalGetDisplayMedia = navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices);
-                navigator.mediaDevices.getDisplayMedia = interceptedGetDisplayMedia;
-                console.log("[StreamRelay] Screen share interceptado - usando servidor relay");
-            } else {
-                console.warn("[StreamRelay] getDisplayMedia nao disponivel - funcionalidade limitada");
-            }
+        // Intercept screen share regardless of autoRelay setting
+        if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
+            originalGetDisplayMedia = navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices);
+            navigator.mediaDevices.getDisplayMedia = interceptedGetDisplayMedia;
+            console.log("[StreamRelay] Screen share interceptado - usando servidor relay");
+        } else {
+            console.warn("[StreamRelay] getDisplayMedia nao disponivel");
+            // Try to polyfill getDisplayMedia
+            navigator.mediaDevices.getDisplayMedia = async (options) => {
+                showToast("Captura de tela indisponivel. Execute: flatpak override --user --socket=x11 --socket=wayland --device=dri com.discordapp.Discord", Toasts.Type.FAILURE);
+                throw new Error("getDisplayMedia not supported - Flatpak permissions needed");
+            };
         }
     },
 

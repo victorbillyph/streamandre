@@ -322,30 +322,54 @@ function removeRedButtonStyle() {
 }
 function injectRedButtons() {
     ensureRedButtonStyle();
-    // procura botao de Go Live / Share Screen no painel de voz
-    const candidates = Array.from(document.querySelectorAll('button[aria-label]')) as HTMLButtonElement[];
+    // procura em varios seletores (Discord usa <button> e <div role=button>)
+    const candidates = Array.from(document.querySelectorAll('button[aria-label], [role="button"][aria-label], button, [class*="actionButtons"] button, [class*="panels"] button')) as HTMLElement[];
+    let injected = 0;
     for (const btn of candidates) {
-        const label = (btn.getAttribute("aria-label") || "").toLowerCase();
-        const isShare = label.includes("share") || label.includes("compartilhar") || label.includes("go live") || label.includes("transmitir") || label.includes("screen") || label.includes("video");
-        // tambem checa se tem icone de screen
-        const hasScreenIcon = !!btn.querySelector('svg path[d*="M4 4"]') || !!btn.querySelector('svg path[d*="screen"]');
-        if (!isShare && !hasScreenIcon) continue;
-        // ja injetado?
-        if (btn.nextElementSibling?.classList.contains("sr-red-share-btn")) continue;
-        // evita injetar em botoes pequenos do chat
-        if (btn.closest('[class*="channelTextArea"]')) continue;
+        const label = ((btn.getAttribute("aria-label") || btn.getAttribute("title") || btn.textContent || "")).toLowerCase();
+        const isShare = label.includes("share") || label.includes("compartilhar") || label.includes("go live") || label.includes("transmitir") || label.includes("screen") || label.includes("tela") || label.includes("video") || label.includes("live");
+        const hasScreenIcon = !!btn.querySelector('svg');
+        // heuristica: botao de acao de voz/call tem tamanho ~32-56px e fica em bottom panel
+        const rect = btn.getBoundingClientRect();
+        const isCallButton = rect.width >= 32 && rect.width <= 80 && rect.height >= 32 && rect.height <= 80;
+        if (!isShare && !(hasScreenIcon && isCallButton)) continue;
+        if (btn.closest('[class*="channelTextArea"]') || btn.closest('[class*="chat"]')) continue;
+        if ((btn.nextElementSibling as Element)?.classList?.contains("sr-red-share-btn")) continue;
+        if (btn.classList.contains("sr-red-share-btn")) continue;
 
-        const clone = btn.cloneNode(true) as HTMLButtonElement;
-        clone.classList.add("sr-red-share-btn");
-        clone.setAttribute("aria-label", "StreamRelay (servidor privado)");
-        clone.title = "StreamRelay — abrir painel";
-        // remove listeners clonados e adiciona o nosso
-        const newBtn = clone.cloneNode(true) as HTMLButtonElement;
-        newBtn.onclick = (e) => { e.preventDefault(); e.stopPropagation(); openStatusModal(); };
-        newBtn.style.background = "#ed4245";
-        // copia tamanho
-        newBtn.style.marginLeft = "8px";
-        btn.insertAdjacentElement("afterend", newBtn);
+        const newBtn = btn.cloneNode(true) as HTMLElement;
+        newBtn.classList.add("sr-red-share-btn");
+        newBtn.setAttribute("aria-label", "StreamRelay (servidor privado)");
+        (newBtn as any).title = "StreamRelay — abrir painel";
+        // limpa listeners antigos: clona de novo
+        const cleanBtn = newBtn.cloneNode(true) as HTMLElement;
+        cleanBtn.onclick = (e) => { e.preventDefault(); e.stopPropagation(); openStatusModal(); };
+        (cleanBtn as HTMLElement).style.background = "#ed4245";
+        (cleanBtn as HTMLElement).style.backgroundColor = "#ed4245";
+        (cleanBtn as HTMLElement).style.borderColor = "#ed4245";
+        (cleanBtn as HTMLElement).style.color = "white";
+        (cleanBtn as HTMLElement).style.marginLeft = "8px";
+        // garante visibilidade
+        (cleanBtn as HTMLElement).style.opacity = "1";
+        (cleanBtn as HTMLElement).style.visibility = "visible";
+        // força icone branco
+        cleanBtn.querySelectorAll("svg, svg path").forEach(el => ((el as HTMLElement).style as any).color = "white");
+        try { btn.insertAdjacentElement("afterend", cleanBtn); injected++; } catch {}
+        if (injected >= 2) break;
+    }
+    // fallback: se nao achou botao, injeta flutuante no painel de voz como ultimo recurso
+    if (injected === 0) {
+        const panel = document.querySelector('[class*="panels"]') || document.querySelector('[class*="container"][class*="panels"]') || document.querySelector('div[class*="actionButtons"]');
+        if (panel && !panel.querySelector(".sr-red-share-btn")) {
+            const fb = document.createElement("button");
+            fb.className = "sr-red-share-btn";
+            fb.setAttribute("aria-label", "StreamRelay");
+            fb.title = "StreamRelay — abrir painel";
+            fb.style.cssText = "background:#ed4245;color:white;border:none;border-radius:8px;padding:8px 12px;margin:8px;cursor:pointer;font-weight:600;display:flex;align-items:center;gap:6px;";
+            fb.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="white"><rect x="2" y="3" width="20" height="14" rx="2" stroke="white" fill="none" stroke-width="2"/><path d="M8 21h8M12 17v4" stroke="white" stroke-width="2" stroke-linecap="round"/></svg> StreamRelay`;
+            fb.onclick = () => openStatusModal();
+            panel.appendChild(fb);
+        }
     }
 }
 function startRedButtonObserver() {

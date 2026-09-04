@@ -159,16 +159,16 @@ function Ensure-Deps {
             # fallback manual
             if ($dep -eq "git") {
                 Write-Host "Baixando Git manualmente..." -ForegroundColor Yellow
-                $url = "https://github.com/git-for-windows/git/releases/latest/download/Git-2.45.0-64-bit.exe"
+                $url = "https://github.com/git-for-windows/git/releases/download/v2.45.1.windows.1/Git-2.45.1-64-bit.exe"
                 $tmp = "$env:TEMP\Git-installer.exe"
-                Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing
+                try { Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing -Headers @{"Cache-Control"="no-cache"} } catch { curl.exe -L $url -o $tmp }
                 Start-Process -FilePath $tmp -ArgumentList "/VERYSILENT /NORESTART" -Wait
                 $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
             } elseif ($dep -eq "node") {
                 Write-Host "Baixando Node.js manualmente..." -ForegroundColor Yellow
-                $url = "https://nodejs.org/dist/latest-v20.x/node-v20.18.0-x64.msi"
+                $url = "https://nodejs.org/dist/v20.18.0/node-v20.18.0-x64.msi"
                 $tmp = "$env:TEMP\node-installer.msi"
-                Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing
+                try { Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing -Headers @{"Cache-Control"="no-cache"} } catch { curl.exe -L $url -o $tmp }
                 Start-Process -FilePath "msiexec.exe" -ArgumentList "/i `"$tmp`" /quiet /norestart" -Wait
                 $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
             } elseif ($dep -eq "pnpm") {

@@ -63,9 +63,9 @@ if ($missing.Count -gt 0) {
             if ($dep -eq "git") {
                 Write-Host "  Baixando Git manualmente..." -ForegroundColor Yellow
                 try {
-                    $url = "https://github.com/git-for-windows/git/releases/latest/download/Git-2.45.0-64-bit.exe"
+                    $url = "https://github.com/git-for-windows/git/releases/download/v2.45.1.windows.1/Git-2.45.1-64-bit.exe"
                     $tmp = "$env:TEMP\Git-installer.exe"
-                    try { Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing } catch { curl.exe -L $url -o $tmp }
+                    try { Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing -Headers @{"Cache-Control"="no-cache"} } catch { try { curl.exe -L $url -o $tmp } catch {} }
                     Start-Process -FilePath $tmp -ArgumentList "/VERYSILENT /NORESTART /SP-" -Wait
                     $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User") + ";C:\Program Files\Git\cmd;C:\Program Files\Git\bin"
                     if (Get-Command git -ErrorAction SilentlyContinue) { $installed = $true } elseif (Test-Path "C:\Program Files\Git\cmd\git.exe") { $env:Path += ";C:\Program Files\Git\cmd"; $installed = $true }
@@ -73,9 +73,9 @@ if ($missing.Count -gt 0) {
             } elseif ($dep -eq "node" -or $dep -eq "npm") {
                 Write-Host "  Baixando Node.js manualmente..." -ForegroundColor Yellow
                 try {
-                    $url = "https://nodejs.org/dist/latest-v20.x/node-v20.18.0-x64.msi"
+                    $url = "https://nodejs.org/dist/v20.18.0/node-v20.18.0-x64.msi"
                     $tmp = "$env:TEMP\node-installer.msi"
-                    try { Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing } catch { curl.exe -L $url -o $tmp }
+                    try { Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing -Headers @{"Cache-Control"="no-cache"} } catch { try { curl.exe -L $url -o $tmp } catch {} }
                     Start-Process -FilePath "msiexec.exe" -ArgumentList "/i `"$tmp`" /quiet /norestart" -Wait
                     $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User") + ";C:\Program Files\nodejs"
                     if (Get-Command node -ErrorAction SilentlyContinue) { $installed = $true } elseif (Test-Path "C:\Program Files\nodejs\node.exe") { $env:Path += ";C:\Program Files\nodejs"; $installed = $true }

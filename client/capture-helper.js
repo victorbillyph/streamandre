@@ -41,7 +41,7 @@ function captureFrame() {
         if (!buf || buf.length < 100) { console.error('[Capture] buf vazio', buf?.length); return null; }
         const header = Buffer.alloc(13);
         header.write('SRF1', 0); header.writeUInt8(0, 4);
-        header.writeUInt16LE(1920, 5); header.writeUInt16LE(1080, 7); header.writeUInt32LE(Date.now(), 9);
+        header.writeUInt16LE(1920, 5); header.writeUInt16LE(1080, 7); header.writeUInt32LE(Date.now() % 4294967296, 9);
         return Buffer.concat([header, buf]);
     } catch (e) {
         console.error('[Capture] grim falhou:', e.message);

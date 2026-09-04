@@ -36,17 +36,17 @@ function connect() {
 
 function captureFrame() {
     try {
-        const tmpFile = '/tmp/sr_capture.jpeg';
-        execSync(`grim -t jpeg -q 60 "${tmpFile}" 2>/dev/null`, { timeout: 3000 });
-        if (!fs.existsSync(tmpFile)) return null;
-        const buf = fs.readFileSync(tmpFile);
-        if (buf.length < 100) return null;
-        // JPEG no header dims, usar 1920x1080 fallback (viewer usa bmp dims)
+        // captura para stdout (sem arquivo) - mais confiavel no Wayland
+        const buf = execSync(`grim -t jpeg -q 60 - 2>/dev/null`, { timeout: 3000, maxBuffer: 10*1024*1024 });
+        if (!buf || buf.length < 100) { console.error('[Capture] buf vazio', buf?.length); return null; }
         const header = Buffer.alloc(13);
-        header.write('SRF1', 0); header.writeUInt8(0, 4); // 0=jpeg
+        header.write('SRF1', 0); header.writeUInt8(0, 4);
         header.writeUInt16LE(1920, 5); header.writeUInt16LE(1080, 7); header.writeUInt32LE(Date.now(), 9);
         return Buffer.concat([header, buf]);
-    } catch { return null; }
+    } catch (e) {
+        console.error('[Capture] grim falhou:', e.message);
+        return null;
+    }
 }
 
 async function main() {

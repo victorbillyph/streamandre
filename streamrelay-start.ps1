@@ -139,7 +139,30 @@ function Update-Helper {
     }
 }
 
+function Ensure-Deps {
+    $need = @()
+    foreach ($c in @("git","node","pnpm")) { if (-not (Get-Command $c -ErrorAction SilentlyContinue)) { $need += $c } }
+    if ($need.Count -eq 0) { return }
+    Write-Host "Dependencias faltando: $($need -join ', ') — instalando..." -ForegroundColor Yellow
+    $map = @{ git = "Git.Git"; node = "OpenJS.NodeJS.LTS"; pnpm = "pnpm.pnpm" }
+    foreach ($dep in $need) {
+        $id = $map[$dep]; if (-not $id) { $id = $dep }
+        if (Get-Command winget -ErrorAction SilentlyContinue) {
+            try { winget install -e --id $id --accept-source-agreements --accept-package-agreements --silent --disable-interactivity | Out-Null } catch {}
+            $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+        }
+        if (-not (Get-Command $dep -ErrorAction SilentlyContinue) -and (Get-Command choco -ErrorAction SilentlyContinue)) {
+            try { choco install $dep -y --no-progress | Out-Null } catch {}
+            $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+        }
+        if (-not (Get-Command $dep -ErrorAction SilentlyContinue)) {
+            throw "Falha ao instalar $dep. Instale manualmente: https://github.com/$id"
+        }
+    }
+}
+
 function Ensure-VencordPlugin {
+    try { Ensure-Deps } catch { Write-Host "[AVISO] $_" -ForegroundColor Yellow; return }
     $VENCORD_DIR = "$env:USERPROFILE\Vencord"
     $PLUGIN_SRC = "$INSTALL_DIR\plugin\StreamRelay.tsx"
     $USERPLUGIN = "$VENCORD_DIR\src\userplugins\StreamRelay.tsx"
@@ -148,6 +171,7 @@ function Ensure-VencordPlugin {
         return
     }
     Write-Host "Plugin Vencord nao encontrado. Instalando..." -ForegroundColor Yellow
+    if (-not (Get-Command git -ErrorAction SilentlyContinue)) { throw "git nao encontrado apos instalacao" }
     if (-not (Test-Path "$VENCORD_DIR\.git")) {
         Write-Host "Clonando Vencord..." -ForegroundColor Yellow
         git clone https://github.com/Vendicated/Vencord.git $VENCORD_DIR

@@ -30,21 +30,41 @@ if (-not (Check-Command "npm")) { $missing += "npm" }
 if ($missing.Count -gt 0) {
     Write-Host ""
     Write-Host "Instalando dependencias faltantes..." -ForegroundColor Yellow
-    
-    if (Get-Command winget -ErrorAction SilentlyContinue) {
-        foreach ($dep in $missing) {
-            winget install -e --id $dep --accept-package-agreements --accept-source-agreements
+    $wingetMap = @{ git = "Git.Git"; node = "OpenJS.NodeJS.LTS"; npm = "OpenJS.NodeJS.LTS" }
+    $chocoMap = @{ git = "git"; node = "nodejs"; npm = "nodejs" }
+    foreach ($dep in $missing) {
+        $installed = $false
+        if (Get-Command winget -ErrorAction SilentlyContinue) {
+            $id = $wingetMap[$dep]; if (-not $id) { $id = $dep }
+            Write-Host "  winget install $id ..." -ForegroundColor Yellow
+            try {
+                winget install -e --id $id --accept-source-agreements --accept-package-agreements --silent --disable-interactivity 2>&1 | Out-Null
+                # atualiza PATH
+                $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+            } catch {}
+            if (Get-Command $dep -ErrorAction SilentlyContinue) { $installed = $true; Write-Host "  [OK] $dep instalado via winget" -ForegroundColor Green }
         }
-    } elseif (Get-Command choco -ErrorAction SilentlyContinue) {
-        foreach ($dep in $missing) {
-            choco install $dep -y
+        if (-not $installed -and (Get-Command choco -ErrorAction SilentlyContinue)) {
+            $cid = $chocoMap[$dep]; if (-not $cid) { $cid = $dep }
+            Write-Host "  choco install $cid ..." -ForegroundColor Yellow
+            try { choco install $cid -y --no-progress 2>&1 | Out-Null } catch {}
+            $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+            if (Get-Command $dep -ErrorAction SilentlyContinue) { $installed = $true }
         }
-    } else {
-        Write-Host "Instale manualmente: $($missing -join ', ')" -ForegroundColor Red
+        if (-not $installed) {
+            Write-Host "  [ERRO] Falha ao instalar $dep" -ForegroundColor Red
+        }
+    }
+    # revalida
+    $stillMissing = @()
+    foreach ($dep in $missing) { if (-not (Get-Command $dep -ErrorAction SilentlyContinue)) { $stillMissing += $dep } }
+    if ($stillMissing.Count -gt 0) {
+        Write-Host "Instale manualmente: $($stillMissing -join ', ')" -ForegroundColor Red
         Write-Host "  - Git: https://git-scm.com/download/win"
         Write-Host "  - Node.js: https://nodejs.org/"
         exit 1
     }
+    Write-Host "Dependencias instaladas. Reinicie o terminal se necessario." -ForegroundColor Green
 }
 
 Write-Host ""

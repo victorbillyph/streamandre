@@ -146,6 +146,7 @@ echo Pressione Ctrl+C para parar
 node capture-helper.js
 "@
 
+New-Item -ItemType Directory -Force -Path "$env:LOCALAPPDATA\bin" | Out-Null
 $batContent | Out-File -FilePath "$env:LOCALAPPDATA\bin\streamrelay-start.bat" -Encoding ASCII
 
 Write-Host ""

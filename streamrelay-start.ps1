@@ -160,7 +160,7 @@ function Ensure-Deps {
                     if ((Get-Item $tmp).Length -lt 1MB) { throw "pequeno" }
                 } catch { try { Start-BitsTransfer -Source $url -Destination $tmp -ErrorAction Stop } catch { curl.exe -L $url -o $tmp } }
                 Expand-Archive -Path $tmp -DestinationPath "$toolsDir\git" -Force
-                $env:Path = "$toolsDir\git\cmd;$toolsDir\git\mingw64\bin;" + $env:Path
+                $env:Path = "${toolsDir}\git\cmd;${toolsDir}\git\mingw64\bin;" + $env:Path
             } elseif ($dep -eq "node") {
                 Write-Host "Baixando Node.js portatil..." -ForegroundColor Yellow
                 $url = "https://nodejs.org/dist/v20.18.0/node-v20.18.0-win-x64.zip"
@@ -171,8 +171,7 @@ function Ensure-Deps {
                     if ((Get-Item $tmp).Length -lt 1MB) { throw "pequeno" }
                 } catch { try { Start-BitsTransfer -Source $url -Destination $tmp -ErrorAction Stop } catch { curl.exe -L $url -o $tmp } }
                 Expand-Archive -Path $tmp -DestinationPath $toolsDir -Force
-                $env:Path = "$toolsDir\node-v20.18.0-win-x64;" + $env:Path
-            } elseif ($dep -eq "pnpm") {
+                $env:Path = "${toolsDir}\node-v20.18.0-win-x64;" + $env:Path
             } elseif ($dep -eq "pnpm") {
                 cmd /c "npm.cmd install -g pnpm"
                 $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")

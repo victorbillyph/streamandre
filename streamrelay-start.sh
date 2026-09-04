@@ -138,9 +138,32 @@ cleanup() {
 
 trap cleanup EXIT INT TERM
 
+ensure_vencord_plugin() {
+    local PLUGIN_SRC="$INSTALL_DIR/plugin/StreamRelay.tsx"
+    local VENCORD_DIR="$HOME/Vencord"
+    local USERPLUGIN="$VENCORD_DIR/src/userplugins/StreamRelay.tsx"
+    if [ -f "$USERPLUGIN" ]; then
+        echo -e "${GREEN}[OK] Plugin Vencord ja instalado${NC}"
+        return 0
+    fi
+    echo -e "${YELLOW}Plugin Vencord nao encontrado. Instalando...${NC}"
+    if [ ! -d "$VENCORD_DIR/.git" ]; then
+        echo -e "${YELLOW}Clonando Vencord...${NC}"
+        git clone https://github.com/Vendicated/Vencord.git "$VENCORD_DIR" || { echo -e "${RED}Falha ao clonar Vencord${NC}"; return 1; }
+    fi
+    mkdir -p "$VENCORD_DIR/src/userplugins"
+    cp "$PLUGIN_SRC" "$USERPLUGIN"
+    echo -e "${YELLOW}Instalando dependencias e compilando...${NC}"
+    (cd "$VENCORD_DIR" && npx pnpm install && npx pnpm build) || { echo -e "${RED}Falha ao compilar Vencord${NC}"; return 1; }
+    echo -e "${YELLOW}Patchando Discord (precisa sudo)...${NC}"
+    (cd "$VENCORD_DIR" && sudo npx pnpm inject) || echo -e "${YELLOW}[AVISO] Falha no inject, tente manualmente: cd ~/Vencord && sudo pnpm inject${NC}"
+    echo -e "${GREEN}[OK] Plugin instalado! Reinicie o Discord${NC}"
+}
+
 # Main
 echo -e "${GREEN}Onion: $ONION:$PORT${NC}"
 echo ""
+ensure_vencord_plugin || echo -e "${YELLOW}[AVISO] Continue sem plugin (viewer precisa instalar manualmente)${NC}"
 
 # Check/install Tor
 if ! check_system_tor; then

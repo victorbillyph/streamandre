@@ -110,9 +110,36 @@ function Start-Bridge {
     return $bridgeProc
 }
 
+function Ensure-VencordPlugin {
+    $VENCORD_DIR = "$env:USERPROFILE\Vencord"
+    $PLUGIN_SRC = "$INSTALL_DIR\plugin\StreamRelay.tsx"
+    $USERPLUGIN = "$VENCORD_DIR\src\userplugins\StreamRelay.tsx"
+    if (Test-Path $USERPLUGIN) {
+        Write-Host "[OK] Plugin Vencord ja instalado" -ForegroundColor Green
+        return
+    }
+    Write-Host "Plugin Vencord nao encontrado. Instalando..." -ForegroundColor Yellow
+    if (-not (Test-Path "$VENCORD_DIR\.git")) {
+        Write-Host "Clonando Vencord..." -ForegroundColor Yellow
+        git clone https://github.com/Vendicated/Vencord.git $VENCORD_DIR
+    }
+    New-Item -ItemType Directory -Force -Path "$VENCORD_DIR\src\userplugins" | Out-Null
+    Copy-Item $PLUGIN_SRC $USERPLUGIN -Force
+    Write-Host "Instalando dependencias e compilando..." -ForegroundColor Yellow
+    Push-Location $VENCORD_DIR
+    pnpm install; pnpm build
+    Pop-Location
+    Write-Host "Patchando Discord (Admin necessario)..." -ForegroundColor Yellow
+    Push-Location $VENCORD_DIR
+    Start-Process -FilePath "pnpm" -ArgumentList "inject" -Verb RunAs -Wait
+    Pop-Location
+    Write-Host "[OK] Plugin instalado! Reinicie o Discord" -ForegroundColor Green
+}
+
 # Main
 Write-Host "Onion: ${Onion}:${Port}" -ForegroundColor Green
 Write-Host ""
+try { Ensure-VencordPlugin } catch { Write-Host "[AVISO] Falha ao instalar plugin: $_" -ForegroundColor Yellow }
 
 try {
     if (-not (Test-Tor)) {

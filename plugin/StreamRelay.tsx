@@ -155,7 +155,12 @@ function handleFrame(data: ArrayBuffer) {
     const canvas = document.getElementById("stream-relay-canvas") as HTMLCanvasElement;
     if (!canvas) return;
     const ctx = canvas.getContext("2d")!;
-    const blob = new Blob([data], { type: "image/webp" });
+    let buf = data instanceof ArrayBuffer ? new Uint8Array(data) : new Uint8Array(data as any);
+    // strip SRF1 header (13 bytes) if present
+    if (buf.length > 13 && buf[0] === 0x53 && buf[1] === 0x52 && buf[2] === 0x46 && buf[3] === 0x31) {
+        buf = buf.slice(13);
+    }
+    const blob = new Blob([buf], { type: "image/jpeg" });
     createImageBitmap(blob).then(bmp => { canvas.width = bmp.width; canvas.height = bmp.height; ctx.drawImage(bmp, 0, 0); }).catch(() => {});
 }
 function checkHelperStatus(): Promise<boolean> {

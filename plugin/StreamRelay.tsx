@@ -21,9 +21,132 @@ let stream = null;
 let sendInterval = null;
 let overlayEl = null;
 let popupObserver = null;
+let pickerModal = null;
 
 const FRAME_RATE = 15;
 const QUALITY = 0.6;
+
+function createPickerModal(onStart, onCancel) {
+    removePickerModal();
+
+    pickerModal = document.createElement("div");
+    pickerModal.id = "stream-relay-picker";
+    pickerModal.style.cssText = `
+        position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.85); z-index: 999999;
+        display: flex; align-items: center; justify-content: center;
+        font-family: 'gg sans', 'Noto Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    `;
+
+    const modal = document.createElement("div");
+    modal.style.cssText = `
+        background: #2b2d31; border-radius: 12px; padding: 24px;
+        width: 500px; max-width: 90vw; box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+        color: #dbdee1;
+    `;
+
+    modal.innerHTML = `
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+            <div style="width:40px;height:40px;background:#5865f2;border-radius:50%;display:flex;align-items:center;justify-content:center;">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
+                    <path d="M4 4h16a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V6a2 2 0 012-2zm0 2v10h16V6H4zm4 12l4-4 4 4"/>
+                </svg>
+            </div>
+            <div>
+                <div style="font-size:20px;font-weight:600;color:#f2f3f5;">StreamRelay</div>
+                <div style="font-size:14px;color:#b5bac1;">Compartilhar tela via servidor privado</div>
+            </div>
+        </div>
+
+        <div style="background:#1e1f22;border-radius:8px;padding:16px;margin-bottom:16px;">
+            <div style="font-size:14px;color:#b5bac1;margin-bottom:8px;">
+                Selecione a captura de tela:
+            </div>
+            <div id="srr-picker-options" style="display:flex;flex-direction:column;gap:8px;">
+                <button id="srr-btn-screen" style="
+                    background:#5865f2; border:none; color:white; padding:12px 16px;
+                    border-radius:8px; cursor:pointer; font-size:14px; text-align:left;
+                    display:flex; align-items:center; gap:10px; transition: background 0.2s;
+                ">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
+                        <rect x="2" y="3" width="20" height="14" rx="2" stroke="white" fill="none" stroke-width="2"/>
+                        <path d="M8 21h8M12 17v4" stroke="white" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                    Toda a tela
+                </button>
+                <button id="srr-btn-window" style="
+                    background:#383a40; border:none; color:white; padding:12px 16px;
+                    border-radius:8px; cursor:pointer; font-size:14px; text-align:left;
+                    display:flex; align-items:center; gap:10px; transition: background 0.2s;
+                ">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
+                        <rect x="3" y="3" width="18" height="18" rx="2" stroke="white" fill="none" stroke-width="2"/>
+                        <path d="M3 9h18" stroke="white" stroke-width="2"/>
+                    </svg>
+                    Janela específica
+                </button>
+            </div>
+        </div>
+
+        <div style="background:#1e1f22;border-radius:8px;padding:12px;margin-bottom:16px;">
+            <div style="font-size:12px;color:#b5bac1;display:flex;align-items:center;gap:6px;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="#b5bac1">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                </svg>
+                A transmissão será enviada via Tor para o seu servidor privado
+            </div>
+        </div>
+
+        <div style="display:flex;gap:12px;justify-content:flex-end;">
+            <button id="srr-btn-cancel" style="
+                background:transparent; border:1px solid #4e5058; color:#dbdee1;
+                padding:8px 16px; border-radius:8px; cursor:pointer; font-size:14px;
+            ">Cancelar</button>
+        </div>
+    `;
+
+    pickerModal.appendChild(modal);
+    document.body.appendChild(pickerModal);
+
+    // Button handlers
+    const btnScreen = modal.querySelector("#srr-btn-screen");
+    const btnWindow = modal.querySelector("#srr-btn-window");
+    const btnCancel = modal.querySelector("#srr-btn-cancel");
+
+    btnScreen.onmouseenter = () => btnScreen.style.background = "#4752c4";
+    btnScreen.onmouseleave = () => btnScreen.style.background = "#5865f2";
+    btnWindow.onmouseenter = () => btnWindow.style.background = "#4e5058";
+    btnWindow.onmouseleave = () => btnWindow.style.background = "#383a40";
+
+    btnScreen.onclick = () => {
+        removePickerModal();
+        onStart({ video: { displaySurface: "monitor" }, audio: false });
+    };
+
+    btnWindow.onclick = () => {
+        removePickerModal();
+        onStart({ video: { displaySurface: "window" }, audio: false });
+    };
+
+    btnCancel.onclick = () => {
+        removePickerModal();
+        if (onCancel) onCancel();
+    };
+
+    pickerModal.onclick = (e) => {
+        if (e.target === pickerModal) {
+            removePickerModal();
+            if (onCancel) onCancel();
+        }
+    };
+}
+
+function removePickerModal() {
+    if (pickerModal) {
+        pickerModal.remove();
+        pickerModal = null;
+    }
+}
 
 // CSS to hide Discord's screen share restriction popup ONLY
 const HIDE_POPUP_CSS = `
@@ -194,6 +317,7 @@ function cleanup() {
         ws = null;
     }
     removeOverlay();
+    removePickerModal();
 }
 
 function connectWS(onionAddr, onionPort, mode, room) {
@@ -266,106 +390,96 @@ async function startHost(onionAddr, onionPort, room) {
     injectPopupBlockerCSS();
     startPopupObserver();
 
-    // Small delay to allow CSS/observer to take effect
-    await new Promise((r) => setTimeout(r, 100));
+    // Show custom picker modal
+    createPickerModal(
+        // On start
+        async (constraints) => {
+            showToast("Iniciando captura de tela...", Toasts.Type.INFO);
 
-    try {
-        // Try getDisplayMedia with constraints that might bypass restrictions
-        stream = await navigator.mediaDevices.getDisplayMedia({
-            video: {
-                cursor: "always",
-                width: { ideal: 1920 },
-                height: { ideal: 1080 },
-                frameRate: { ideal: 30 },
-            },
-            audio: false,
-            // @ts-ignore - experimental features
-            selfBrowserSurface: "include",
-            systemAudio: "include",
-            surfaceSwitching: "include",
-        });
-    } catch (err1) {
-        console.log("[StreamRelay] First attempt failed:", err1.message);
+            try {
+                // Try getDisplayMedia with the selected constraints
+                stream = await navigator.mediaDevices.getDisplayMedia(constraints);
+            } catch (err1) {
+                console.log("[StreamRelay] First attempt failed:", err1.message);
 
-        // Try with minimal constraints
-        try {
-            stream = await navigator.mediaDevices.getDisplayMedia({
-                video: true,
-                audio: false,
-            });
-        } catch (err2) {
-            console.log("[StreamRelay] Second attempt failed:", err2.message);
-
-            showToast(
-                "Screen capture blocked. Try running Discord with --enable-features=WebRTCPipeWireCapturer",
-                Toasts.Type.FAILURE
-            );
-            return;
-        }
-    }
-
-    showToast("Connecting to relay...", Toasts.Type.INFO);
-
-    try {
-        const roomId = await connectWS(onionAddr, onionPort, "host", room);
-        createOverlay(roomId);
-        showToast(`Hosting room: ${roomId}`, Toasts.Type.SUCCESS);
-
-        const videoTrack = stream.getVideoTracks()[0];
-        const canvas = document.createElement("canvas");
-        const ctx = canvas.getContext("2d");
-
-        sendInterval = setInterval(() => {
-            if (!videoTrack || videoTrack.readyState !== "live") {
-                cleanup();
-                return;
+                // Try with minimal constraints
+                try {
+                    stream = await navigator.mediaDevices.getDisplayMedia({
+                        video: true,
+                        audio: false,
+                    });
+                } catch (err2) {
+                    console.log("[StreamRelay] Second attempt failed:", err2.message);
+                    showToast(
+                        "Captura de tela bloqueada. Tente reiniciar o Discord.",
+                        Toasts.Type.FAILURE
+                    );
+                    return;
+                }
             }
-            const settings = videoTrack.getSettings();
-            canvas.width = settings.width || 1280;
-            canvas.height = settings.height || 720;
-            ctx.drawImage(videoTrack, 0, 0, canvas.width, canvas.height);
 
-            canvas.toBlob(
-                (blob) => {
-                    if (
-                        blob &&
-                        ws &&
-                        ws.readyState === WebSocket.OPEN
-                    ) {
-                        blob.arrayBuffer().then((buf) => {
-                            const header = new ArrayBuffer(13);
-                            const view = new DataView(header);
-                            view.setUint8(0, 0x53);
-                            view.setUint8(1, 0x52);
-                            view.setUint8(2, 0x46);
-                            view.setUint8(3, 0x31);
-                            view.setUint8(4, 1);
-                            view.setUint16(5, canvas.width, true);
-                            view.setUint16(7, canvas.height, true);
-                            view.setUint32(9, Date.now(), true);
+            showToast("Conectando ao relay...", Toasts.Type.INFO);
 
-                            const packet = new Uint8Array(
-                                13 + buf.byteLength
-                            );
-                            packet.set(new Uint8Array(header), 0);
-                            packet.set(new Uint8Array(buf), 13);
-                            ws.send(packet);
-                        });
+            try {
+                const roomId = await connectWS(onionAddr, onionPort, "host", room);
+                createOverlay(roomId);
+                showToast(`Hostando sala: ${roomId}`, Toasts.Type.SUCCESS);
+
+                const videoTrack = stream.getVideoTracks()[0];
+                const canvas = document.createElement("canvas");
+                const ctx = canvas.getContext("2d");
+
+                sendInterval = setInterval(() => {
+                    if (!videoTrack || videoTrack.readyState !== "live") {
+                        cleanup();
+                        return;
                     }
-                },
-                "image/webp",
-                QUALITY
-            );
-        }, 1000 / FRAME_RATE);
+                    const settings = videoTrack.getSettings();
+                    canvas.width = settings.width || 1280;
+                    canvas.height = settings.height || 720;
+                    ctx.drawImage(videoTrack, 0, 0, canvas.width, canvas.height);
 
-        videoTrack.onended = () => {
-            cleanup();
-            showToast("Stream ended", Toasts.Type.FAILURE);
-        };
-    } catch (err) {
-        cleanup();
-        showToast(`Error: ${err.message}`, Toasts.Type.FAILURE);
-    }
+                    canvas.toBlob(
+                        (blob) => {
+                            if (blob && ws && ws.readyState === WebSocket.OPEN) {
+                                blob.arrayBuffer().then((buf) => {
+                                    const header = new ArrayBuffer(13);
+                                    const view = new DataView(header);
+                                    view.setUint8(0, 0x53);
+                                    view.setUint8(1, 0x52);
+                                    view.setUint8(2, 0x46);
+                                    view.setUint8(3, 0x31);
+                                    view.setUint8(4, 1);
+                                    view.setUint16(5, canvas.width, true);
+                                    view.setUint16(7, canvas.height, true);
+                                    view.setUint32(9, Date.now(), true);
+
+                                    const packet = new Uint8Array(13 + buf.byteLength);
+                                    packet.set(new Uint8Array(header), 0);
+                                    packet.set(new Uint8Array(buf), 13);
+                                    ws.send(packet);
+                                });
+                            }
+                        },
+                        "image/webp",
+                        QUALITY
+                    );
+                }, 1000 / FRAME_RATE);
+
+                videoTrack.onended = () => {
+                    cleanup();
+                    showToast("Transmissão encerrada", Toasts.Type.FAILURE);
+                };
+            } catch (err) {
+                cleanup();
+                showToast(`Erro: ${err.message}`, Toasts.Type.FAILURE);
+            }
+        },
+        // On cancel
+        () => {
+            showToast("Transmissão cancelada", Toasts.Type.INFO);
+        }
+    );
 }
 
 async function startView(onionAddr, onionPort, room) {

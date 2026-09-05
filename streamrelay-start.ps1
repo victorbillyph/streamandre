@@ -33,11 +33,22 @@ Ensure-Install
 
 function Test-Tor { if (Get-Command "tor" -ErrorAction SilentlyContinue) { return $true }; if (Test-Path $TOR_EXE) { return $true }; return $false }
 function Install-Tor {
-    Write-Host "Tor nao encontrado. Baixando..." -ForegroundColor Yellow
+    Write-Host "Tor nao encontrado. Baixando Expert Bundle..." -ForegroundColor Yellow
     New-Item -ItemType Directory -Force -Path $TOR_DIR | Out-Null
-    $arch = if ([Environment]::Is64BitOperatingSystem) { "windows-x86_64" } else { "windows-i686" }
-    $url = "https://github.com/nickvdp/tor-binary/releases/latest/download/tor-${arch}.exe"
-    try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri $url -OutFile $TOR_EXE -UseBasicParsing } catch { Start-BitsTransfer -Source $url -Destination $TOR_EXE -ErrorAction SilentlyContinue }
+    $is64 = [Environment]::Is64BitOperatingSystem
+    $url = if ($is64) { "https://archive.torproject.org/tor-package-archive/torbrowser/15.0.21/tor-expert-bundle-windows-x86_64-15.0.21.tar.gz" } else { "https://archive.torproject.org/tor-package-archive/torbrowser/15.0.21/tor-expert-bundle-windows-i686-15.0.21.tar.gz" }
+    $tmp = "$env:TEMP\tor-expert.tar.gz"
+    Write-Host "Baixando $url ..." -ForegroundColor Yellow
+    try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing -MaximumRedirection 5
+        if ((Get-Item $tmp).Length -lt 5MB) { throw "pequeno" }
+    } catch { try { Start-BitsTransfer -Source $url -Destination $tmp -ErrorAction Stop } catch { curl.exe -L $url -o $tmp } }
+    Write-Host "Extraindo..." -ForegroundColor Yellow
+    try { tar -xzf $tmp -C $TOR_DIR 2>$null } catch { Expand-Archive -Path $tmp -DestinationPath $TOR_DIR -Force 2>$null }
+    $found = Get-ChildItem -Path $TOR_DIR -Recurse -Filter "tor.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($found) { $script:TOR_EXE = $found.FullName; Write-Host "Tor em: $TOR_EXE" -ForegroundColor Green }
+    Remove-Item $tmp -Force -ErrorAction SilentlyContinue
     Write-Host "Tor baixado!" -ForegroundColor Green
 }
 function Repair-Tor {

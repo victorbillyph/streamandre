@@ -51,7 +51,6 @@ function connectMonitor(monitor, room) {
 }
 
 async function connectAll(baseRoom) {
-    // uma unica sala para todos os monitores (imagem combinada via grim sem -o)
     const ws = new WebSocket(`ws://127.0.0.1:${RELAY_PORT}`);
     return new Promise((resolve, reject) => {
         ws.on('open', () => ws.send(JSON.stringify({ type: 'host', room: baseRoom || undefined })));
@@ -78,13 +77,13 @@ function captureFrame(monitor) {
     try {
         let buf;
         if (process.platform === "win32") {
-            // Windows: ffmpeg gdigrab (precisa ffmpeg no PATH)
             try {
                 buf = execSync(`ffmpeg -f gdigrab -framerate 10 -i desktop -vframes 1 -q:v 5 -f mjpeg pipe:1 2>nul`, { timeout: 3000, maxBuffer: 10*1024*1024 });
+                if (!buf || buf.length < 500) throw new Error('ffmpeg empty');
             } catch {
-                // fallback PowerShell
-                const ps = `powershell -NoProfile -Command "$bmp = [System.Drawing.Graphics]::FromHwnd([IntPtr]::Zero); $w=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Width; $h=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height; $b=New-Object System.Drawing.Bitmap($w,$h); $g=[System.Drawing.Graphics]::FromImage($b); $g.CopyFromScreen(0,0,0,0,$b.Size); $ms=New-Object IO.MemoryStream; $b.Save($ms,[System.Drawing.Imaging.ImageFormat]::Jpeg); [Convert]::ToBase64String($ms.ToArray())"`;
-                const b64 = execSync(ps, { encoding: 'utf8', timeout: 3000, maxBuffer: 10*1024*1024 }).trim();
+                const ps = `powershell -NoProfile -Command "Add-Type -AssemblyName System.Drawing -ErrorAction SilentlyContinue; Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue; Add-Type -AssemblyName System.Drawing.Common -ErrorAction SilentlyContinue; $w=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Width; $h=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height; $b=New-Object System.Drawing.Bitmap($w,$h); $g=[System.Drawing.Graphics]::FromImage($b); $g.CopyFromScreen(0,0,0,0,$b.Size); $ms=New-Object IO.MemoryStream; $b.Save($ms,[System.Drawing.Imaging.ImageFormat]::Jpeg); [Convert]::ToBase64String($ms.ToArray()); $g.Dispose(); $b.Dispose()"`;
+                const b64 = execSync(ps, { encoding: 'utf8', timeout: 5000, maxBuffer: 10*1024*1024 }).trim();
+                if (!b64 || b64.length < 100) throw new Error('powershell empty');
                 buf = Buffer.from(b64, 'base64');
             }
         } else {

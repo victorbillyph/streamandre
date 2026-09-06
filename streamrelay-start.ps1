@@ -144,6 +144,33 @@ function Ensure-Deps {
         }
     }
 }
+function Ensure-Ffmpeg {
+    if (Get-Command ffmpeg -ErrorAction SilentlyContinue) { Write-Host "[OK] ffmpeg ja instalado" -ForegroundColor Green; return }
+    $ffmpegDir = "$INSTALL_DIR\tools\ffmpeg"; $ffmpegExe = "$ffmpegDir\bin\ffmpeg.exe"
+    if (Test-Path $ffmpegExe) { $env:Path = "$ffmpegDir\bin;" + $env:Path; Write-Host "[OK] ffmpeg portatil encontrado" -ForegroundColor Green; return }
+    Write-Host "ffmpeg nao encontrado - baixando (30MB)..." -ForegroundColor Yellow
+    New-Item -ItemType Directory -Force -Path $ffmpegDir | Out-Null
+    $url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
+    $tmp = "$env:TEMP\ffmpeg.zip"
+    try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing -MaximumRedirection 5
+        if ((Get-Item $tmp).Length -lt 5MB) { throw "download pequeno" }
+    } catch {
+        try { Start-BitsTransfer -Source $url -Destination $tmp -ErrorAction Stop } catch { curl.exe -L $url -o $tmp }
+    }
+    Write-Host "Extraindo ffmpeg..." -ForegroundColor Yellow
+    Expand-Archive -Path $tmp -DestinationPath $ffmpegDir -Force
+    # move bin para ffmpeg\bin
+    $found = Get-ChildItem -Path $ffmpegDir -Recurse -Filter "ffmpeg.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($found) {
+        $binDir2 = "$ffmpegDir\bin"; New-Item -ItemType Directory -Force -Path $binDir2 | Out-Null
+        if ($found.DirectoryName -ne $binDir2) { Copy-Item $found.FullName "$binDir2\ffmpeg.exe" -Force; Copy-Item "$($found.DirectoryName)\ffplay.exe" "$binDir2\" -Force -ErrorAction SilentlyContinue; Copy-Item "$($found.DirectoryName)\ffprobe.exe" "$binDir2\" -Force -ErrorAction SilentlyContinue }
+        $env:Path = "$binDir2;" + $env:Path
+        Write-Host "[OK] ffmpeg instalado em $binDir2" -ForegroundColor Green
+    } else { Write-Host "[AVISO] ffmpeg nao encontrado apos extracao" -ForegroundColor Yellow }
+    Remove-Item $tmp -Force -ErrorAction SilentlyContinue
+}
 function Ensure-VencordPlugin {
     try { Ensure-Deps } catch { Write-Host "[AVISO] $_" -ForegroundColor Yellow; return }
     $VENCORD_DIR = "$env:USERPROFILE\Vencord"; $PLUGIN_SRC = "$INSTALL_DIR\plugin\StreamRelay.tsx"; $USERPLUGIN = "$VENCORD_DIR\src\userplugins\StreamRelay.tsx"
@@ -161,6 +188,7 @@ function Ensure-VencordPlugin {
 Write-Host "Onion: ${script:Onion}:${script:Port}" -ForegroundColor Green
 Update-Helper
 try { Ensure-VencordPlugin } catch { Write-Host "[AVISO] Plugin: $_" -ForegroundColor Yellow }
+try { Ensure-Ffmpeg } catch { Write-Host "[AVISO] ffmpeg: $_" -ForegroundColor Yellow }
 try {
     if (-not (Test-Tor)) { Install-Tor }
     Start-Tor; Start-Server; $bridgeProc = Start-Bridge

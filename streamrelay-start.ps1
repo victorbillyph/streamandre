@@ -6,6 +6,13 @@ $ErrorActionPreference = "Continue"
 $INSTALL_DIR = "$env:LOCALAPPDATA\StreamRelay"
 $TOR_DIR = "$INSTALL_DIR\tor"; $TOR_EXE = "$TOR_DIR\tor.exe"; $TOR_DATA = "$INSTALL_DIR\tor-data"; $TOR_SOCKS = 9050
 $REPO_URL = "https://github.com/victorbillyph/streamandre.git"
+function Get-TorExe {
+    if (Get-Command "tor" -ErrorAction SilentlyContinue) { return "tor" }
+    if (Test-Path $TOR_EXE) { return $TOR_EXE }
+    $found = Get-ChildItem -Path $TOR_DIR -Recurse -Filter "tor.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($found) { $script:TOR_EXE = $found.FullName; return $found.FullName }
+    return $null
+}
 
 Write-Host "=== StreamRelay Helper ===" -ForegroundColor Green
 
@@ -32,7 +39,7 @@ function Ensure-Install {
 }
 Ensure-Install
 
-function Test-Tor { if (Get-Command "tor" -ErrorAction SilentlyContinue) { return $true }; if (Test-Path $TOR_EXE) { return $true }; return $false }
+function Test-Tor { if (Get-TorExe) { return $true }; return $false }
 function Install-Tor {
     Write-Host "Tor nao encontrado. Baixando Expert Bundle..." -ForegroundColor Yellow
     New-Item -ItemType Directory -Force -Path $TOR_DIR | Out-Null
@@ -65,10 +72,12 @@ function Start-Tor {
     New-Item -ItemType Directory -Force -Path $TOR_DATA | Out-Null
     $torrc = "SocksPort $TOR_SOCKS`nDataDirectory $TOR_DATA`nLog notice file $TOR_DATA\tor.log"
     $torrc | Out-File -FilePath "$TOR_DATA\torrc" -Encoding ASCII
-    $torCmd = if (Get-Command "tor" -ErrorAction SilentlyContinue) { "tor" } else { $TOR_EXE }
+    $torCmd = Get-TorExe
+    if (-not $torCmd) { $torCmd = $TOR_EXE }
     Start-Process -FilePath $torCmd -ArgumentList "-f", "$TOR_DATA\torrc" -WindowStyle Hidden
     for ($i=0; $i -lt 30; $i++) { $port = Get-NetTCPConnection -LocalPort $TOR_SOCKS -ErrorAction SilentlyContinue; if ($port) { Write-Host "[OK] Tor conectado!" -ForegroundColor Green; return }; Start-Sleep -Seconds 1; Write-Host "." -NoNewline }
     Write-Host ""; Write-Host "[ERRO] Tor falhou, reparando..." -ForegroundColor Red; Repair-Tor
+    $torCmd = Get-TorExe; if (-not $torCmd) { $torCmd = $TOR_EXE }
     Start-Process -FilePath $torCmd -ArgumentList "-f", "$TOR_DATA\torrc" -WindowStyle Hidden
     Start-Sleep -Seconds 5
     $port = Get-NetTCPConnection -LocalPort $TOR_SOCKS -ErrorAction SilentlyContinue

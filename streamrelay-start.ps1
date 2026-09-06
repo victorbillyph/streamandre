@@ -76,32 +76,31 @@ function Start-Tor {
 }
 function Repair-Relay {
     Write-Host "Reparando relay..." -ForegroundColor Yellow
-    $p = Get-NetTCPConnection -LocalPort $Port -ErrorAction SilentlyContinue
+    $p = Get-NetTCPConnection -LocalPort $script:Port -ErrorAction SilentlyContinue | Where-Object { $_.OwningProcess -ne 0 } | Select-Object -First 1
     if ($p) { $proc = Get-Process -Id $p.OwningProcess -ErrorAction SilentlyContinue; if ($proc) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } }
-    else { Get-Process -Name "node" -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -eq "node" } | Stop-Process -Force -ErrorAction SilentlyContinue }
     Start-Sleep -Seconds 1
     Push-Location "$INSTALL_DIR\server"; cmd /c "npm.cmd install --silent" 2>$null; Pop-Location
     Push-Location "$INSTALL_DIR\client"; cmd /c "npm.cmd install --silent" 2>$null; Pop-Location
 }
 function Start-Server {
-    $port = Get-NetTCPConnection -LocalPort $Port -ErrorAction SilentlyContinue
-    if ($port) { Write-Host "[OK] Relay ja rodando :$Port" -ForegroundColor Green; return }
+    $port = Get-NetTCPConnection -LocalPort $script:Port -ErrorAction SilentlyContinue | Where-Object { $_.OwningProcess -ne 0 }
+    if ($port) { Write-Host "[OK] Relay ja rodando :$script:Port" -ForegroundColor Green; return }
     Write-Host "Iniciando relay..." -ForegroundColor Yellow
     if (-not (Test-Path "$INSTALL_DIR\server\relayServer.mjs")) { Ensure-Install }
     Push-Location "$INSTALL_DIR\server"; $env:TOR_DATA_DIR = $TOR_DATA; Start-Process -FilePath "node" -ArgumentList "relayServer.mjs" -WindowStyle Hidden; Pop-Location; Start-Sleep -Seconds 2
-    $port = Get-NetTCPConnection -LocalPort $Port -ErrorAction SilentlyContinue
-    if ($port) { Write-Host "[OK] Relay iniciado :$Port" -ForegroundColor Green; return }
+    $port = Get-NetTCPConnection -LocalPort $script:Port -ErrorAction SilentlyContinue | Where-Object { $_.OwningProcess -ne 0 }
+    if ($port) { Write-Host "[OK] Relay iniciado :$script:Port" -ForegroundColor Green; return }
     Repair-Relay; Push-Location "$INSTALL_DIR\server"; $env:TOR_DATA_DIR = $TOR_DATA; Start-Process -FilePath "node" -ArgumentList "relayServer.mjs" -WindowStyle Hidden; Pop-Location; Start-Sleep -Seconds 2
-    $port = Get-NetTCPConnection -LocalPort $Port -ErrorAction SilentlyContinue
-    if (-not $port) { throw "Falha relay - porta $Port nao abriu. Tente: cd $INSTALL_DIR\server; node relayServer.mjs" }
-    Write-Host "[OK] Relay iniciado apos reparo :$Port" -ForegroundColor Green
+    $port = Get-NetTCPConnection -LocalPort $script:Port -ErrorAction SilentlyContinue | Where-Object { $_.OwningProcess -ne 0 }
+    if (-not $port) { throw "Falha relay - porta $script:Port nao abriu. Tente: cd $INSTALL_DIR\server; node relayServer.mjs" }
+    Write-Host "[OK] Relay iniciado apos reparo :$script:Port" -ForegroundColor Green
 }
 function Start-Bridge {
     Write-Host "Iniciando bridge..." -ForegroundColor Yellow
     Push-Location "$INSTALL_DIR\client"
-    $bridgeProc = Start-Process -FilePath "node" -ArgumentList "bridge.mjs", $Onion, $Port -PassThru -WindowStyle Hidden
+    $bridgeProc = Start-Process -FilePath "node" -ArgumentList "bridge.mjs", $script:Onion, $script:Port -PassThru -WindowStyle Hidden
     Pop-Location; Start-Sleep -Seconds 2
-    if ($bridgeProc -and -not $bridgeProc.HasExited) { Write-Host "[OK] Bridge 127.0.0.1:6789 -> ${Onion}:$Port" -ForegroundColor Green; return $bridgeProc }
+    if ($bridgeProc -and -not $bridgeProc.HasExited) { Write-Host "[OK] Bridge 127.0.0.1:6789 -> ${script:Onion}:$script:Port" -ForegroundColor Green; return $bridgeProc }
     Write-Host "[AVISO] Bridge falhou, host continua direto" -ForegroundColor Yellow; return $null
 }
 function Update-Helper {
@@ -159,7 +158,7 @@ function Ensure-VencordPlugin {
 }
 
 # --- Main ---
-Write-Host "Onion: ${Onion}:${Port}" -ForegroundColor Green
+Write-Host "Onion: ${script:Onion}:${script:Port}" -ForegroundColor Green
 Update-Helper
 try { Ensure-VencordPlugin } catch { Write-Host "[AVISO] Plugin: $_" -ForegroundColor Yellow }
 try {

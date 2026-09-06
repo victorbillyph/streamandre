@@ -1,4 +1,4 @@
-# StreamRelay — Script unico Windows: instala Vencord, atualiza, cria comando e inicia tudo
+# StreamRelay - Script unico Windows: instala Vencord, atualiza, cria comando e inicia tudo
 # Uso: irm https://raw.githubusercontent.com/victorbillyph/streamandre/main/streamrelay-start.ps1 | iex
 
 param([string]$Onion = "m5u54wss3pxhi6tqvwv3i3l2m35wv3foitg6kkxln5fmef5blw6ybtad.onion", [int]$Port = 8080, [int]$BridgePort = 6789)
@@ -122,14 +122,14 @@ function Update-Helper {
 function Ensure-Deps {
     $need = @(); foreach ($c in @("git","node","pnpm")) { if (-not (Get-Command $c -ErrorAction SilentlyContinue)) { $need += $c } }
     if ($need.Count -eq 0) { return }
-    Write-Host "Faltando: $($need -join ', ') — baixando portateis..." -ForegroundColor Yellow
+    Write-Host "Faltando: $($need -join ', ') - baixando portateis..." -ForegroundColor Yellow
     $toolsDir = "$INSTALL_DIR\tools"; New-Item -ItemType Directory -Force -Path $toolsDir | Out-Null
     foreach ($dep in $need) {
         if (-not (Get-Command $dep -ErrorAction SilentlyContinue)) {
             if ($dep -eq "git") {
                 $url = "https://github.com/git-for-windows/git/releases/download/v2.45.1.windows.1/MinGit-2.45.1-64-bit.zip"; $tmp = "$env:TEMP\mingit.zip"
                 try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing -MaximumRedirection 5 } catch { Start-BitsTransfer -Source $url -Destination $tmp -ErrorAction SilentlyContinue }
-                Expand-Archive -Path $tmp -DestinationPath "$toolsDir\git" -Force; $env:Path = "$toolsDir\git\cmd;$toolsDir\git\mingw64\bin;" + $env:Path
+                Expand-Archive -Path $tmp -DestinationPath "$toolsDir\git" -Force; $env:Path = "$toolsDir\git\cmd;" + "$toolsDir\git\mingw64\bin;" + $env:Path
             } elseif ($dep -eq "node") {
                 $url = "https://nodejs.org/dist/v20.18.0/node-v20.18.0-win-x64.zip"; $tmp = "$env:TEMP\node.zip"
                 try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing -MaximumRedirection 5 } catch { Start-BitsTransfer -Source $url -Destination $tmp -ErrorAction SilentlyContinue }

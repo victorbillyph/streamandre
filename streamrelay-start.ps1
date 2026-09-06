@@ -26,6 +26,7 @@ function Ensure-Install {
         Copy-Item -Path "$tmp\*" -Destination $INSTALL_DIR -Recurse -Force -ErrorAction SilentlyContinue
         Copy-Item -Path "$tmp\.*" -Destination $INSTALL_DIR -Force -ErrorAction SilentlyContinue
         Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
+        Push-Location "$INSTALL_DIR\server"; cmd /c "npm.cmd install --silent" 2>$null; Pop-Location
         Push-Location "$INSTALL_DIR\client"; cmd /c "npm.cmd install --silent" 2>$null; Pop-Location
     }
 }
@@ -75,21 +76,25 @@ function Start-Tor {
 }
 function Repair-Relay {
     Write-Host "Reparando relay..." -ForegroundColor Yellow
-    Get-Process -Name "node" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like "*relayServer*" } | Stop-Process -Force -ErrorAction SilentlyContinue
+    $p = Get-NetTCPConnection -LocalPort $Port -ErrorAction SilentlyContinue
+    if ($p) { $proc = Get-Process -Id $p.OwningProcess -ErrorAction SilentlyContinue; if ($proc) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } }
+    else { Get-Process -Name "node" -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -eq "node" } | Stop-Process -Force -ErrorAction SilentlyContinue }
     Start-Sleep -Seconds 1
+    Push-Location "$INSTALL_DIR\server"; cmd /c "npm.cmd install --silent" 2>$null; Pop-Location
     Push-Location "$INSTALL_DIR\client"; cmd /c "npm.cmd install --silent" 2>$null; Pop-Location
 }
 function Start-Server {
-    $proc = Get-Process -Name "node" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like "*relayServer*" }
-    if ($proc) { Write-Host "[OK] Relay ja rodando" -ForegroundColor Green; return }
+    $port = Get-NetTCPConnection -LocalPort $Port -ErrorAction SilentlyContinue
+    if ($port) { Write-Host "[OK] Relay ja rodando :$Port" -ForegroundColor Green; return }
     Write-Host "Iniciando relay..." -ForegroundColor Yellow
     if (-not (Test-Path "$INSTALL_DIR\server\relayServer.mjs")) { Ensure-Install }
     Push-Location "$INSTALL_DIR\server"; $env:TOR_DATA_DIR = $TOR_DATA; Start-Process -FilePath "node" -ArgumentList "relayServer.mjs" -WindowStyle Hidden; Pop-Location; Start-Sleep -Seconds 2
-    $proc = Get-Process -Name "node" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like "*relayServer*" }
-    if ($proc) { Write-Host "[OK] Relay iniciado" -ForegroundColor Green; return }
+    $port = Get-NetTCPConnection -LocalPort $Port -ErrorAction SilentlyContinue
+    if ($port) { Write-Host "[OK] Relay iniciado :$Port" -ForegroundColor Green; return }
     Repair-Relay; Push-Location "$INSTALL_DIR\server"; $env:TOR_DATA_DIR = $TOR_DATA; Start-Process -FilePath "node" -ArgumentList "relayServer.mjs" -WindowStyle Hidden; Pop-Location; Start-Sleep -Seconds 2
-    $proc = Get-Process -Name "node" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like "*relayServer*" }
-    if (-not $proc) { throw "Falha relay" }
+    $port = Get-NetTCPConnection -LocalPort $Port -ErrorAction SilentlyContinue
+    if (-not $port) { throw "Falha relay - porta $Port nao abriu. Tente: cd $INSTALL_DIR\server; node relayServer.mjs" }
+    Write-Host "[OK] Relay iniciado apos reparo :$Port" -ForegroundColor Green
 }
 function Start-Bridge {
     Write-Host "Iniciando bridge..." -ForegroundColor Yellow
@@ -106,7 +111,8 @@ function Update-Helper {
         $local = git rev-parse HEAD; $remote = git rev-parse '@{u}' 2>$null; if (-not $remote) { $remote = $local }
         if ($local -ne $remote) {
             Write-Host "Atualizando..." -ForegroundColor Yellow; git pull --ff-only --quiet; Write-Host "Atualizado!" -ForegroundColor Green
-            Push-Location "$INSTALL_DIR\client"; cmd /c "npm.cmd install --silent"; Pop-Location
+            Push-Location "$INSTALL_DIR\server"; cmd /c "npm.cmd install --silent" 2>$null; Pop-Location
+            Push-Location "$INSTALL_DIR\client"; cmd /c "npm.cmd install --silent" 2>$null; Pop-Location
             if ((Test-Path "$INSTALL_DIR\plugin\StreamRelay.tsx") -and (Test-Path "$env:USERPROFILE\Vencord\src\userplugins\StreamRelay.tsx")) {
                 $a = Get-FileHash "$INSTALL_DIR\plugin\StreamRelay.tsx"; $b = Get-FileHash "$env:USERPROFILE\Vencord\src\userplugins\StreamRelay.tsx"
                 if ($a.Hash -ne $b.Hash) {
